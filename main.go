@@ -42,43 +42,6 @@ type S3DHandler struct {
 	ParallelUploads *semaphore.Weighted
 }
 
-// UploadFile reads from a file and puts the data into an object in a bucket.
-func (h *S3DHandler) UploadFile(ctx context.Context, bucketName string, objectKey string, fileName string) error {
-	start := time.Now()
-	file, err := os.Open(fileName)
-	if err != nil {
-		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", fileName, err)
-	} else {
-		defer file.Close()
-		_, err = h.S3Client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    aws.String(objectKey),
-			Body:   file,
-		})
-		if err != nil {
-			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "EntityTooLarge" {
-				log.Printf("Error while uploading object to %s. The object is too large.\n"+
-					"To upload objects larger than 5GB, use the S3 console (160GB max)\n"+
-					"or the multipart upload API (5TB max).", bucketName)
-			} else {
-				log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n",
-					fileName, bucketName, objectKey, err)
-			}
-		} else {
-			/*
-				err = s3.NewObjectExistsWaiter(h.S3Client).Wait(
-					ctx, &s3.HeadObjectInput{Bucket: aws.String(bucketName), Key: aws.String(objectKey)}, time.Minute)
-				if err != nil {
-					log.Printf("Failed attempt to wait for object %s to exist.\n", objectKey)
-				}
-			*/
-		}
-	}
-	fmt.Printf("uploaded %v to %v:%v in %s\n", fileName, bucketName, objectKey, time.Now().Sub(start))
-	return err
-}
-
 // UploadObject uses the S3 upload manager to upload an object to a bucket.
 func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName string) error {
 	start := time.Now()
@@ -165,12 +128,6 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("Bucket:", bucket)
 	// fmt.Println("Key:", key)
 
-	// err = h.UploadFile(context.Background(), bucket, key, file)
-	// if err != nil {
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	fmt.Printf("error uploading file: %s\n", err)
-	// 	return
-	// }
 	err = h.UploadFileMultipart(bucket, key, file)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
