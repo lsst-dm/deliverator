@@ -25,7 +25,7 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-type s3dConf struct {
+type S3DConf struct {
 	host         *string
 	port         *int
 	endpoint_url *string
@@ -34,10 +34,10 @@ type s3dConf struct {
 }
 
 type S3DHandler struct {
-	Ctx       context.Context
+	Conf      *S3DConf
 	AwsConfig *aws.Config
 	S3Client  *s3.Client
-	Conf      *s3dConf
+	Uploader  *manager.Uploader
 }
 
 // UploadFile reads from a file and puts the data into an object in a bucket.
@@ -89,18 +89,7 @@ func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName str
 	// defer file.Close()
 	fmt.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
 
-	s3Client := s3.NewFromConfig(*h.getAwsConfig(), func(o *s3.Options) {
-		o.UsePathStyle = true
-	})
-	fmt.Printf("NewFromConfig %v:%v in %s\n", bucket, key, time.Now().Sub(start))
-	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
-		u.Concurrency = 1000
-		u.MaxUploadParts = 1000
-		u.PartSize = 1024 * 1024 * 5
-	})
-	fmt.Printf("NewUploader %v:%v in %s\n", bucket, key, time.Now().Sub(start))
-
-	_, err = uploader.Upload(h.Ctx, &s3.PutObjectInput{
+	_, err = h.Uploader.Upload(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 		Body:   bytes.NewReader([]byte(data)),
@@ -181,8 +170,8 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Successful put %q", html.EscapeString(uri))
 }
 
-func getConf() s3dConf {
-	conf := s3dConf{}
+func getConf() S3DConf {
+	conf := S3DConf{}
 	conf.host = flag.String("host", os.Getenv("S3DAEMON_HOST"), "S3 Daemon Host")
 	defaultPort, _ := strconv.Atoi(os.Getenv("S3DAEMON_PORT"))
 	if defaultPort == 0 {
@@ -203,7 +192,11 @@ func getConf() s3dConf {
 	return conf
 }
 
-func (h *S3DHandler) getAwsConfig() *aws.Config {
+func New(conf *S3DConf) *S3DHandler {
+	handler := &S3DHandler{
+		Conf: conf,
+	}
+
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		t.ExpectContinueTimeout = 0
 		t.IdleConnTimeout = 0
@@ -211,12 +204,13 @@ func (h *S3DHandler) getAwsConfig() *aws.Config {
 		t.MaxConnsPerHost = 1000
 		t.MaxIdleConnsPerHost = 1000
 		// disable http/2 to prevent muxing over a single tcp connection
+		t.ForceAttemptHTTP2 = false
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	})
 
-	cfg, err := config.LoadDefaultConfig(
+	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),
-		config.WithBaseEndpoint(*h.Conf.endpoint_url),
+		config.WithBaseEndpoint(*conf.endpoint_url),
 		config.WithHTTPClient(httpClient),
 		// config.WithRetryer(func() aws.Retryer {
 		// 	return retry.NewStandard(func(o *retry.StandardOptions) {
@@ -230,81 +224,44 @@ func (h *S3DHandler) getAwsConfig() *aws.Config {
 		log.Fatal(err)
 	}
 
-	return &cfg
+	handler.AwsConfig = &awsCfg
+
+	handler.S3Client = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		o.UsePathStyle = true
+	})
+
+	/*
+		resp, err := s3Client.ListBuckets(context.TODO(), nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Print out the list of buckets
+		fmt.Println("Buckets:")
+		for _, bucket := range resp.Buckets {
+			fmt.Println(*bucket.Name)
+		}
+	*/
+
+	handler.Uploader = manager.NewUploader(handler.S3Client, func(u *manager.Uploader) {
+		u.Concurrency = 1000
+		u.MaxUploadParts = 1000
+		u.PartSize = 1024 * 1024 * 5
+	})
+
+	return handler
 }
 
 func main() {
 	conf := getConf()
 
-	// httpClient := &http.Client{
-	// 	Transport: &http.Transport{
-	// 		ExpectContinueTimeout: 0,
-	// 		IdleConnTimeout:       0,
-	// 		MaxConnsPerHost:       1000,
-	// 		MaxIdleConns:          1000,
-	// 		MaxIdleConnsPerHost:   1000,
-	// 	},
-	// }
-
-	// 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
-	// 		t.ExpectContinueTimeout = 0
-	// 		t.IdleConnTimeout = 0
-	// 		t.MaxIdleConns = 1000
-	// 		t.MaxConnsPerHost = 1000
-	// 		t.MaxIdleConnsPerHost = 1000
-	// 	})
-
-	ctx := context.TODO()
-
-	cfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithBaseEndpoint(*conf.endpoint_url),
-		//config.WithHTTPClient(httpClient),
-		// config.WithRetryer(func() aws.Retryer {
-		// 	return retry.NewStandard(func(o *retry.StandardOptions) {
-		// 		o.MaxAttempts = 10
-		// 		o.MaxBackoff = time.Millisecond * 500
-		// 		o.RateLimiter = ratelimit.None
-		// 	})
-		// }),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//cfg.HTTPClient.(*http.Client).Transport.(*http.Transport).ExpectContinueTimeout = 0
-
-	// v := reflect.ValueOf(cfg.HTTPClient)
-	// fmt.Println("Type:", v.Type())
-	// fmt.Println("Kind:", v.Kind())
-
-	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.UsePathStyle = true
-	})
-	resp, err := s3Client.ListBuckets(context.TODO(), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	handler := S3DHandler{
-		Ctx:       ctx,
-		AwsConfig: &cfg,
-		S3Client:  s3Client,
-		Conf:      &conf,
-	}
-
-	// Print out the list of buckets
-	fmt.Println("Buckets:")
-	for _, bucket := range resp.Buckets {
-		fmt.Println(*bucket.Name)
-	}
-
-	http.Handle("/", &handler)
+	handler := New(&conf)
+	http.Handle("/", handler)
 
 	addr := fmt.Sprintf("%s:%d", *conf.host, *conf.port)
 	fmt.Println("Listening on", addr)
 
-	err = http.ListenAndServe(addr, nil)
+	err := http.ListenAndServe(addr, nil)
 	if errors.Is(err, http.ErrServerClosed) {
 		fmt.Printf("server closed\n")
 	} else if err != nil {
