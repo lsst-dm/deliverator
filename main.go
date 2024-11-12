@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"html"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -80,21 +78,20 @@ func (h *S3DHandler) UploadFile(ctx context.Context, bucketName string, objectKe
 // UploadObject uses the S3 upload manager to upload an object to a bucket.
 func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName string) error {
 	start := time.Now()
-	// file, err := os.Open(fileName)
-	data, err := ioutil.ReadFile(fileName)
+	file, err := os.Open(fileName)
 	if err != nil {
 		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", fileName, err)
 		return err
 	}
-	// defer file.Close()
-	fmt.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
+	defer file.Close()
+	// data, err := ioutil.ReadFile(fileName)
+	// fmt.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
 
 	_, err = h.Uploader.Upload(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
-		Body:   bytes.NewReader([]byte(data)),
-		// Body:   file,
-		// ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		// Body:   bytes.NewReader([]byte(data)),
+		Body: file,
 	})
 	if err != nil {
 		var noBucket *types.NoSuchBucket
