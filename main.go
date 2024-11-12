@@ -31,6 +31,7 @@ type S3DConf struct {
 	// access_key   *string
 	// secret_key   *string
 	maxParallelUploads *int64
+	uploadTimeout      time.Duration
 }
 
 type S3DHandler struct {
@@ -126,33 +127,35 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if !filepath.IsAbs(file) {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Only absolute file paths are supported, %q", html.EscapeString(file))
+		fmt.Fprintf(w, "Only absolute file paths are supported, %q\n", html.EscapeString(file))
 		return
 	}
 
 	u, err := url.Parse(uri)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Unable to parse URI, %q", html.EscapeString(uri))
+		fmt.Fprintf(w, "Unable to parse URI, %q\n", html.EscapeString(uri))
 		return
 	}
 
 	if u.Scheme != "s3" {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Only s3 scheme is supported, %q", html.EscapeString(uri))
+		fmt.Fprintf(w, "Only s3 scheme is supported, %q\n", html.EscapeString(uri))
 		return
 	}
 
 	bucket := u.Host
 	if bucket == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Unable to parse bucket from URI, %q", html.EscapeString(uri))
+		fmt.Fprintf(w, "Unable to parse bucket from URI, %q\n", html.EscapeString(uri))
 		return
 	}
 	key := u.Path[1:] // Remove leading slash
 
 	// limit the number of parallel uploads
-	if err := h.ParallelUploads.Acquire(context.Background(), 1); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), h.Conf.uploadTimeout)
+	defer cancel()
+	if err := h.ParallelUploads.Acquire(ctx, 1); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
 		return
@@ -175,7 +178,7 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "Successful put %q", html.EscapeString(uri))
+	fmt.Fprintf(w, "Successful put %q\n", html.EscapeString(uri))
 }
 
 func getConf() S3DConf {
@@ -198,16 +201,29 @@ func getConf() S3DConf {
 	}
 	conf.maxParallelUploads = flag.Int64("max-parallel-uploads", defaultMaxParallelUploads, "Max Parallel Uploads")
 
+	defaultUploadTimeout := os.Getenv("S3DAEMON_UPLOAD_TIMEOUT")
+	if defaultUploadTimeout == "" {
+		defaultUploadTimeout = "10s"
+	}
+	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (go duration)")
+
 	flag.Parse()
 
 	if *conf.endpoint_url == "" {
 		log.Fatal("s3-endpoint-url is required")
 	}
 
+	uploadTimeoutDuration, err := time.ParseDuration(*uploadTimeout)
+	if err != nil {
+		log.Fatal("upload-timeout is invalid")
+	}
+	conf.uploadTimeout = uploadTimeoutDuration
+
 	log.Println("host:", *conf.host)
 	log.Println("port:", *conf.port)
 	log.Println("s3-endpoint-url:", *conf.endpoint_url)
 	log.Println("max-parallel-uploads:", *conf.maxParallelUploads)
+	log.Println("upload-timeout:", conf.uploadTimeout)
 
 	return conf
 }
