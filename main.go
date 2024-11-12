@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"golang.org/x/sync/semaphore"
 )
 
 type S3DConf struct {
@@ -29,13 +30,15 @@ type S3DConf struct {
 	endpoint_url *string
 	// access_key   *string
 	// secret_key   *string
+	maxParallelUploads *int64
 }
 
 type S3DHandler struct {
-	Conf      *S3DConf
-	AwsConfig *aws.Config
-	S3Client  *s3.Client
-	Uploader  *manager.Uploader
+	Conf            *S3DConf
+	AwsConfig       *aws.Config
+	S3Client        *s3.Client
+	Uploader        *manager.Uploader
+	ParallelUploads *semaphore.Weighted
 }
 
 // UploadFile reads from a file and puts the data into an object in a bucket.
@@ -148,6 +151,14 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	key := u.Path[1:] // Remove leading slash
 
+	// limit the number of parallel uploads
+	if err := h.ParallelUploads.Acquire(context.Background(), 1); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
+		return
+	}
+	defer h.ParallelUploads.Release(1)
+
 	// fmt.Println("Bucket:", bucket)
 	// fmt.Println("Key:", key)
 
@@ -169,13 +180,24 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func getConf() S3DConf {
 	conf := S3DConf{}
+
 	conf.host = flag.String("host", os.Getenv("S3DAEMON_HOST"), "S3 Daemon Host")
+
 	defaultPort, _ := strconv.Atoi(os.Getenv("S3DAEMON_PORT"))
 	if defaultPort == 0 {
 		defaultPort = 15555
 	}
 	conf.port = flag.Int("port", defaultPort, "S3 Daemon Port")
+
 	conf.endpoint_url = flag.String("s3-endpoint-url", os.Getenv("S3_ENDPOINT_URL"), "S3 Endpoint URL")
+
+	var defaultMaxParallelUploads int64
+	defaultMaxParallelUploads, _ = strconv.ParseInt(os.Getenv("S3DAEMON_MAX_PARALLEL_UPLOADS"), 10, 64)
+	if defaultMaxParallelUploads == 0 {
+		defaultMaxParallelUploads = 100
+	}
+	conf.maxParallelUploads = flag.Int64("max-parallel-uploads", defaultMaxParallelUploads, "Max Parallel Uploads")
+
 	flag.Parse()
 
 	if *conf.endpoint_url == "" {
@@ -185,11 +207,12 @@ func getConf() S3DConf {
 	log.Println("host:", *conf.host)
 	log.Println("port:", *conf.port)
 	log.Println("s3-endpoint-url:", *conf.endpoint_url)
+	log.Println("max-parallel-uploads:", *conf.maxParallelUploads)
 
 	return conf
 }
 
-func New(conf *S3DConf) *S3DHandler {
+func NewHandler(conf *S3DConf) *S3DHandler {
 	handler := &S3DHandler{
 		Conf: conf,
 	}
@@ -246,13 +269,15 @@ func New(conf *S3DConf) *S3DHandler {
 		u.PartSize = 1024 * 1024 * 5
 	})
 
+	handler.ParallelUploads = semaphore.NewWeighted(*conf.maxParallelUploads)
+
 	return handler
 }
 
 func main() {
 	conf := getConf()
 
-	handler := New(&conf)
+	handler := NewHandler(&conf)
 	http.Handle("/", handler)
 
 	addr := fmt.Sprintf("%s:%d", *conf.host, *conf.port)
