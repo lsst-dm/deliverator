@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.3
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.37
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.3
-	golang.org/x/sync v0.9.0
+	github.com/hyperledger/fabric v2.1.1+incompatible
 )
 
 require (
@@ -26,4 +26,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.32.4 // indirect
 	github.com/aws/smithy-go v1.22.0 // indirect
+	github.com/onsi/gomega v1.35.1 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 )

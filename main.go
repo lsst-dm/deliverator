@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"golang.org/x/sync/semaphore"
+	"github.com/hyperledger/fabric/common/semaphore"
 )
 
 type S3DConf struct {
@@ -40,7 +40,7 @@ type S3DHandler struct {
 	AwsConfig       *aws.Config
 	S3Client        *s3.Client
 	Uploader        *manager.Uploader
-	ParallelUploads *semaphore.Weighted
+	ParallelUploads *semaphore.Semaphore
 }
 
 // UploadObject uses the S3 upload manager to upload an object to a bucket.
@@ -137,13 +137,13 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// limit the number of parallel uploads
 	ctx, cancel := context.WithTimeout(context.Background(), *h.Conf.queueTimeout)
 	defer cancel()
-	if err := h.ParallelUploads.Acquire(ctx, 1); err != nil {
+	if err := h.ParallelUploads.Acquire(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
 		log.Printf("queue %v:%v | failed after %s: %s\n", bucket, key, time.Now().Sub(start), err)
 		return
 	}
-	defer h.ParallelUploads.Release(1)
+	defer h.ParallelUploads.Release()
 
 	err = h.UploadFileMultipart(bucket, key, file)
 	if err != nil {
@@ -282,7 +282,8 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		u.PartSize = 1024 * 1024 * 5
 	})
 
-	handler.ParallelUploads = semaphore.NewWeighted(*conf.maxParallelUploads)
+	sema := semaphore.New(int(*conf.maxParallelUploads))
+	handler.ParallelUploads = &sema
 
 	return handler
 }
