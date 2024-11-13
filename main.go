@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -31,7 +30,9 @@ type S3DConf struct {
 	// access_key   *string
 	// secret_key   *string
 	maxParallelUploads *int64
-	uploadTimeout      time.Duration
+	uploadTimeout      *time.Duration
+	queueTimeout       *time.Duration
+	uploadTries        *int
 }
 
 type S3DHandler struct {
@@ -47,31 +48,50 @@ func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName str
 	start := time.Now()
 	file, err := os.Open(fileName)
 	if err != nil {
-		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", fileName, err)
+		log.Printf("upload %v:%v | Couldn't open file %v to upload because: %v\n", bucket, key, fileName, err)
 		return err
 	}
 	defer file.Close()
 	// data, err := ioutil.ReadFile(fileName)
-	// fmt.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
+	// log.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
 
-	_, err = h.Uploader.Upload(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-		// Body:   bytes.NewReader([]byte(data)),
-		Body: file,
-	})
-	if err != nil {
-		var noBucket *types.NoSuchBucket
-		if errors.As(err, &noBucket) {
-			log.Printf("Bucket %s does not exist.\n", bucket)
-			err = noBucket
+	maxAttempts := *h.Conf.uploadTries
+	var attempt int
+	for attempt = 1; attempt <= maxAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.TODO(), *h.Conf.uploadTimeout)
+		defer cancel()
+		_, err = h.Uploader.Upload(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+			// Body:   bytes.NewReader([]byte(data)),
+			Body: file,
+		})
+		if err != nil {
+			var noBucket *types.NoSuchBucket
+			if errors.As(err, &noBucket) {
+				log.Printf("upload %v:%v | Bucket %s does not exist.\n", bucket, key, bucket)
+				return noBucket // Don't retry if the bucket doesn't exist.
+			}
+
+			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", bucket, key, time.Now().Sub(start), attempt, maxAttempts)
+			log.Printf("upload %v:%v | failed because: %v\n", bucket, key, err)
+
+			// bubble up the error if we've exhausted our attempts
+			if attempt == maxAttempts {
+				return err
+			}
+		} else {
+			break
 		}
 	}
-	fmt.Printf("uploaded %v:%v in %s\n", bucket, key, time.Now().Sub(start))
-	return err
+
+	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", bucket, key, time.Now().Sub(start), attempt, maxAttempts)
+	return nil
 }
 
 func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	file := r.PostFormValue("file")
 	if file == "" {
 		w.Header().Set("x-missing-field", "file")
@@ -84,9 +104,6 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	fmt.Println("file:", file)
-	fmt.Println("uri:", uri)
 
 	if !filepath.IsAbs(file) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -115,23 +132,23 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	key := u.Path[1:] // Remove leading slash
 
+	log.Printf("queuing %v:%v | source %v\n", bucket, key, file)
+
 	// limit the number of parallel uploads
-	ctx, cancel := context.WithTimeout(context.Background(), h.Conf.uploadTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), *h.Conf.queueTimeout)
 	defer cancel()
 	if err := h.ParallelUploads.Acquire(ctx, 1); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
+		log.Printf("queue %v:%v | failed after %s: %s\n", bucket, key, time.Now().Sub(start), err)
 		return
 	}
 	defer h.ParallelUploads.Release(1)
 
-	// fmt.Println("Bucket:", bucket)
-	// fmt.Println("Key:", key)
-
 	err = h.UploadFileMultipart(bucket, key, file)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Printf("error uploading file: %s\n", err)
+		fmt.Fprintf(w, "error uploading file: %s\n", err)
 		return
 	}
 
@@ -141,46 +158,68 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func getConf() S3DConf {
 	conf := S3DConf{}
 
-	conf.host = flag.String("host", os.Getenv("S3DAEMON_HOST"), "S3 Daemon Host")
+	// start flags
+	conf.host = flag.String("host", os.Getenv("S3DAEMON_HOST"), "S3 Daemon Host (S3DAEMON_HOST)")
 
 	defaultPort, _ := strconv.Atoi(os.Getenv("S3DAEMON_PORT"))
 	if defaultPort == 0 {
 		defaultPort = 15555
 	}
-	conf.port = flag.Int("port", defaultPort, "S3 Daemon Port")
+	conf.port = flag.Int("port", defaultPort, "S3 Daemon Port (S3DAEMON_PORT)")
 
-	conf.endpoint_url = flag.String("s3-endpoint-url", os.Getenv("S3_ENDPOINT_URL"), "S3 Endpoint URL")
+	conf.endpoint_url = flag.String("s3-endpoint-url", os.Getenv("S3_ENDPOINT_URL"), "S3 Endpoint URL (S3_ENDPOINT_URL)")
 
 	var defaultMaxParallelUploads int64
 	defaultMaxParallelUploads, _ = strconv.ParseInt(os.Getenv("S3DAEMON_MAX_PARALLEL_UPLOADS"), 10, 64)
 	if defaultMaxParallelUploads == 0 {
 		defaultMaxParallelUploads = 100
 	}
-	conf.maxParallelUploads = flag.Int64("max-parallel-uploads", defaultMaxParallelUploads, "Max Parallel Uploads")
+	conf.maxParallelUploads = flag.Int64("max-parallel-uploads", defaultMaxParallelUploads, "Max Parallel Uploads (S3DAEMON_MAX_PARALLEL_UPLOADS)")
 
 	defaultUploadTimeout := os.Getenv("S3DAEMON_UPLOAD_TIMEOUT")
 	if defaultUploadTimeout == "" {
 		defaultUploadTimeout = "10s"
 	}
-	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (go duration)")
+	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (S3DAEMON_UPLOAD_TIMEOUT)")
+
+	defaultQueueTimeout := os.Getenv("S3DAEMON_QUEUE_TIMEOUT")
+	if defaultQueueTimeout == "" {
+		defaultQueueTimeout = "10s"
+	}
+	queueTimeout := flag.String("queue-timeout", defaultQueueTimeout, "Queue Timeout waiting for transfer to start (S3DAEMON_QUEUE_TIMEOUT)")
+
+	defaultUploadTries, _ := strconv.Atoi(os.Getenv("S3DAEMON_UPLOAD_TRIES"))
+	if defaultUploadTries == 0 {
+		defaultUploadTries = 1
+	}
+	conf.uploadTries = flag.Int("upload-tries", defaultUploadTries, "Max number of upload tries (S3DAEMON_UPLOAD_TRIES)")
 
 	flag.Parse()
+	// end flags
 
 	if *conf.endpoint_url == "" {
-		log.Fatal("s3-endpoint-url is required")
+		log.Fatal("S3_ENDPOINT_URL is required")
 	}
 
 	uploadTimeoutDuration, err := time.ParseDuration(*uploadTimeout)
 	if err != nil {
-		log.Fatal("upload-timeout is invalid")
+		log.Fatal("S3DAEMON_UPLOAD_TIMEOUT is invalid")
 	}
-	conf.uploadTimeout = uploadTimeoutDuration
+	conf.uploadTimeout = &uploadTimeoutDuration
 
-	log.Println("host:", *conf.host)
-	log.Println("port:", *conf.port)
-	log.Println("s3-endpoint-url:", *conf.endpoint_url)
-	log.Println("max-parallel-uploads:", *conf.maxParallelUploads)
-	log.Println("upload-timeout:", conf.uploadTimeout)
+	queueTimeoutDuration, err := time.ParseDuration(*queueTimeout)
+	if err != nil {
+		log.Fatal("S3DAEMON_QUEUE_TIMEOUT is invalid")
+	}
+	conf.queueTimeout = &queueTimeoutDuration
+
+	log.Println("S3DAEMON_HOST:", *conf.host)
+	log.Println("S3DAEMON_PORT:", *conf.port)
+	log.Println("S3DAEMON_ENDPOINT_URL:", *conf.endpoint_url)
+	log.Println("S3DAEMON_MAX_PARALLEL_UPLOADS:", *conf.maxParallelUploads)
+	log.Println("S3DAEMON_UPLOAD_TIMEOUT:", *conf.uploadTimeout)
+	log.Println("S3DAEMON_QUEUE_TIMEOUT:", *conf.queueTimeout)
+	log.Println("S3DAEMON_UPLOAD_TRIES:", *conf.uploadTries)
 
 	return conf
 }
@@ -193,9 +232,9 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		t.ExpectContinueTimeout = 0
 		t.IdleConnTimeout = 0
-		t.MaxIdleConns = 1000
-		t.MaxConnsPerHost = 1000
-		t.MaxIdleConnsPerHost = 1000
+		t.MaxIdleConns = int(*conf.maxParallelUploads * 4)
+		t.MaxConnsPerHost = int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
+		t.MaxIdleConnsPerHost = int(*conf.maxParallelUploads * 4)
 		t.WriteBufferSize = 1024 * 1024 * 5
 		// disable http/2 to prevent muxing over a single tcp connection
 		t.ForceAttemptHTTP2 = false
@@ -231,9 +270,9 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		}
 
 		// Print out the list of buckets
-		fmt.Println("Buckets:")
+		log.Println("Buckets:")
 		for _, bucket := range resp.Buckets {
-			fmt.Println(*bucket.Name)
+			log.Println(*bucket.Name)
 		}
 	*/
 
@@ -255,13 +294,12 @@ func main() {
 	http.Handle("/", handler)
 
 	addr := fmt.Sprintf("%s:%d", *conf.host, *conf.port)
-	fmt.Println("Listening on", addr)
+	log.Println("Listening on", addr)
 
 	err := http.ListenAndServe(addr, nil)
 	if errors.Is(err, http.ErrServerClosed) {
-		fmt.Printf("server closed\n")
+		log.Printf("server closed\n")
 	} else if err != nil {
-		fmt.Printf("error starting server: %s\n", err)
-		os.Exit(1)
+		log.Fatal("error starting server: %s\n", err)
 	}
 }
