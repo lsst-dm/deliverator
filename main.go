@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/hyperledger/fabric/common/semaphore"
+	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
 
 type S3DConf struct {
@@ -33,6 +34,7 @@ type S3DConf struct {
 	uploadTimeout      *time.Duration
 	queueTimeout       *time.Duration
 	uploadTries        *int
+	uploadPartsize     *k8sresource.Quantity
 }
 
 type S3DHandler struct {
@@ -194,6 +196,12 @@ func getConf() S3DConf {
 	}
 	conf.uploadTries = flag.Int("upload-tries", defaultUploadTries, "Max number of upload tries (S3DAEMON_UPLOAD_TRIES)")
 
+	defaultUploadPartsize := os.Getenv("S3DAEMON_UPLOAD_PARTSIZE")
+	if defaultUploadPartsize == "" {
+		defaultUploadPartsize = "5Mi"
+	}
+	uploadPartsize := flag.String("upload-partsize", defaultUploadPartsize, "Upload Part Size (S3DAEMON_UPLOAD_PARTSIZE)")
+
 	flag.Parse()
 	// end flags
 
@@ -213,6 +221,12 @@ func getConf() S3DConf {
 	}
 	conf.queueTimeout = &queueTimeoutDuration
 
+	uploadPartsizeQuantity, err := k8sresource.ParseQuantity(*uploadPartsize)
+	if err != nil {
+		log.Fatal("S3DAEMON_UPLOAD_PARTSIZE is invalid")
+	}
+	conf.uploadPartsize = &uploadPartsizeQuantity
+
 	log.Println("S3DAEMON_HOST:", *conf.host)
 	log.Println("S3DAEMON_PORT:", *conf.port)
 	log.Println("S3DAEMON_ENDPOINT_URL:", *conf.endpoint_url)
@@ -220,6 +234,7 @@ func getConf() S3DConf {
 	log.Println("S3DAEMON_UPLOAD_TIMEOUT:", *conf.uploadTimeout)
 	log.Println("S3DAEMON_QUEUE_TIMEOUT:", *conf.queueTimeout)
 	log.Println("S3DAEMON_UPLOAD_TRIES:", *conf.uploadTries)
+	log.Println("S3DAEMON_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
 
 	return conf
 }
@@ -281,7 +296,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 	handler.Uploader = manager.NewUploader(handler.S3Client, func(u *manager.Uploader) {
 		u.Concurrency = 1000
 		u.MaxUploadParts = 1000
-		u.PartSize = 1024 * 1024 * 5
+		u.PartSize = conf.uploadPartsize.Value()
 	})
 
 	sema := semaphore.New(int(*conf.maxParallelUploads))
