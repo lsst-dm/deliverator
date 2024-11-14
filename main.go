@@ -229,12 +229,14 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		Conf: conf,
 	}
 
+	maxConns := int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
+
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		t.ExpectContinueTimeout = 0
 		t.IdleConnTimeout = 0
-		t.MaxIdleConns = int(*conf.maxParallelUploads * 4)
-		t.MaxConnsPerHost = int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
-		t.MaxIdleConnsPerHost = int(*conf.maxParallelUploads * 4)
+		t.MaxIdleConns = maxConns
+		t.MaxConnsPerHost = maxConns
+		t.MaxIdleConnsPerHost = maxConns
 		t.WriteBufferSize = 1024 * 1024 * 5
 		// disable http/2 to prevent muxing over a single tcp connection
 		t.ForceAttemptHTTP2 = false
