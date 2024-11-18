@@ -6,7 +6,7 @@ RUN apk --update --no-cache add \
     && rm -rf /root/.cache
 WORKDIR /go/src/github.com/jhoblitt/s3daemon-go
 COPY . .
-RUN go build && strip "$BIN"
+RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" -o s3daemon-go && strip "$BIN"
 
 FROM alpine:3
 WORKDIR /root/
