@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/conduitio/bwlimit"
 	"github.com/hyperledger/fabric/common/semaphore"
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
@@ -247,6 +248,11 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 
 	maxConns := int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
 
+	dialer := bwlimit.NewDialer(&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 0,
+	}, 100*(bwlimit.Mebibyte/8), 0)
+
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		t.ExpectContinueTimeout = 0
 		t.IdleConnTimeout = 0
@@ -257,8 +263,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		// disable http/2 to prevent muxing over a single tcp connection
 		t.ForceAttemptHTTP2 = false
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
-	}).WithDialerOptions(func(d *net.Dialer) {
-		d.KeepAlive = 0 // 0 means enabled, -1 means disabled
+		t.DialContext = dialer.DialContext
 	})
 
 	awsCfg, err := config.LoadDefaultConfig(
