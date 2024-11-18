@@ -278,6 +278,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 
 	handler.S3Client = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = true
+		o.Retryer = aws.NopRetryer{}
 	})
 
 	/*
