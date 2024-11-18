@@ -49,7 +49,7 @@ type S3DHandler struct {
 }
 
 // UploadObject uses the S3 upload manager to upload an object to a bucket.
-func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName string) error {
+func (h *S3DHandler) UploadFileMultipart(ctx context.Context, bucket string, key string, fileName string) error {
 	start := time.Now()
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -63,9 +63,9 @@ func (h *S3DHandler) UploadFileMultipart(bucket string, key string, fileName str
 	maxAttempts := *h.Conf.uploadTries
 	var attempt int
 	for attempt = 1; attempt <= maxAttempts; attempt++ {
-		ctx, cancel := context.WithTimeout(context.TODO(), *h.Conf.uploadTimeout)
+		uploadCtx, cancel := context.WithTimeout(ctx, *h.Conf.uploadTimeout)
 		defer cancel()
-		_, err = h.Uploader.Upload(ctx, &s3.PutObjectInput{
+		_, err = h.Uploader.Upload(uploadCtx, &s3.PutObjectInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 			// Body:   bytes.NewReader([]byte(data)),
@@ -140,9 +140,9 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("queuing %v:%v | source %v\n", bucket, key, file)
 
 	// limit the number of parallel uploads
-	ctx, cancel := context.WithTimeout(context.Background(), *h.Conf.queueTimeout)
+	semaCtx, cancel := context.WithTimeout(r.Context(), *h.Conf.queueTimeout)
 	defer cancel()
-	if err := h.ParallelUploads.Acquire(ctx); err != nil {
+	if err := h.ParallelUploads.Acquire(semaCtx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
 		log.Printf("queue %v:%v | failed after %s: %s\n", bucket, key, time.Now().Sub(start), err)
@@ -150,7 +150,7 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.ParallelUploads.Release()
 
-	err = h.UploadFileMultipart(bucket, key, file)
+	err = h.UploadFileMultipart(r.Context(), bucket, key, file)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "error uploading file: %s\n", err)
