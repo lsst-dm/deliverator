@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -256,6 +257,8 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		// disable http/2 to prevent muxing over a single tcp connection
 		t.ForceAttemptHTTP2 = false
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	}).WithDialerOptions(func(d *net.Dialer) {
+		d.KeepAlive = 0 // 0 means enabled, -1 means disabled
 	})
 
 	awsCfg, err := config.LoadDefaultConfig(
