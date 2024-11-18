@@ -252,7 +252,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		t.MaxIdleConns = maxConns
 		t.MaxConnsPerHost = maxConns
 		t.MaxIdleConnsPerHost = maxConns
-		t.WriteBufferSize = 1024 * 1024 * 5
+		t.WriteBufferSize = 64 * 1024
 		// disable http/2 to prevent muxing over a single tcp connection
 		t.ForceAttemptHTTP2 = false
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
