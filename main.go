@@ -37,6 +37,7 @@ type S3DConf struct {
 	queueTimeout       *time.Duration
 	uploadTries        *int
 	uploadPartsize     *k8sresource.Quantity
+	uploadBwlimit      *k8sresource.Quantity
 }
 
 type S3DHandler struct {
@@ -202,7 +203,13 @@ func getConf() S3DConf {
 	if defaultUploadPartsize == "" {
 		defaultUploadPartsize = "5Mi"
 	}
-	uploadPartsize := flag.String("upload-partsize", defaultUploadPartsize, "Upload Part Size (S3DAEMON_UPLOAD_PARTSIZE)")
+	uploadPartsizeRaw := flag.String("upload-partsize", defaultUploadPartsize, "Upload Part Size (S3DAEMON_UPLOAD_PARTSIZE)")
+
+	defaultUploadBwlimit := os.Getenv("S3DAEMON_UPLOAD_BWLIMIT")
+	if defaultUploadBwlimit == "" {
+		defaultUploadBwlimit = "10Mi"
+	}
+	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bytes per second (S3DAEMON_UPLOAD_BWLIMIT)")
 
 	flag.Parse()
 	// end flags
@@ -223,11 +230,17 @@ func getConf() S3DConf {
 	}
 	conf.queueTimeout = &queueTimeoutDuration
 
-	uploadPartsizeQuantity, err := k8sresource.ParseQuantity(*uploadPartsize)
+	uploadPartsize, err := k8sresource.ParseQuantity(*uploadPartsizeRaw)
 	if err != nil {
 		log.Fatal("S3DAEMON_UPLOAD_PARTSIZE is invalid")
 	}
-	conf.uploadPartsize = &uploadPartsizeQuantity
+	conf.uploadPartsize = &uploadPartsize
+
+	uploadBwlimit, err := k8sresource.ParseQuantity(*uploadBwlimitRaw)
+	if err != nil {
+		log.Fatal("S3DAEMON_UPLOAD_BWLIMIT is invalid")
+	}
+	conf.uploadBwlimit = &uploadBwlimit
 
 	log.Println("S3DAEMON_HOST:", *conf.host)
 	log.Println("S3DAEMON_PORT:", *conf.port)
@@ -237,6 +250,7 @@ func getConf() S3DConf {
 	log.Println("S3DAEMON_QUEUE_TIMEOUT:", *conf.queueTimeout)
 	log.Println("S3DAEMON_UPLOAD_TRIES:", *conf.uploadTries)
 	log.Println("S3DAEMON_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
+	log.Println("S3DAEMON_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
 
 	return conf
 }
@@ -251,7 +265,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 	dialer := bwlimit.NewDialer(&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 0,
-	}, 100*(bwlimit.Mebibyte/8), 0)
+	}, bwlimit.Byte(conf.uploadBwlimit.Value()), 0)
 
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		t.ExpectContinueTimeout = 0
