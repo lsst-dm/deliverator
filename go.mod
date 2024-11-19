@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.3
 	github.com/conduitio/bwlimit v0.1.0
 	github.com/hyperledger/fabric v2.1.1+incompatible
+	golang.org/x/sys v0.26.0
 	k8s.io/apimachinery v0.31.2
 )
 

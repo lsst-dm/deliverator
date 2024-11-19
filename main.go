@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -23,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/conduitio/bwlimit"
 	"github.com/hyperledger/fabric/common/semaphore"
+	"golang.org/x/sys/unix"
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -32,12 +34,13 @@ type S3DConf struct {
 	endpoint_url *string
 	// access_key   *string
 	// secret_key   *string
-	maxParallelUploads *int64
-	uploadTimeout      *time.Duration
-	queueTimeout       *time.Duration
-	uploadTries        *int
-	uploadPartsize     *k8sresource.Quantity
-	uploadBwlimit      *k8sresource.Quantity
+	maxParallelUploads   *int64
+	uploadTimeout        *time.Duration
+	queueTimeout         *time.Duration
+	uploadTries          *int
+	uploadPartsize       *k8sresource.Quantity
+	uploadBwlimit        *k8sresource.Quantity
+	uploadBwlimitInteral bool
 }
 
 type S3DHandler struct {
@@ -224,6 +227,9 @@ func getConf() S3DConf {
 	}
 	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bits per second (S3DAEMON_UPLOAD_BWLIMIT)")
 
+	defaultUploadBwlimitInternal, _ := strconv.ParseBool(os.Getenv("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL"))
+	uploadBwlimitInternal := flag.Bool("upload-bwlimit-internal", defaultUploadBwlimitInternal, "Use internal tcp pacing instead of fq (S3DAEMON_UPLOAD_BWLIMIT_INTERNAL)")
+
 	flag.Parse()
 	// end flags
 
@@ -255,6 +261,8 @@ func getConf() S3DConf {
 	}
 	conf.uploadBwlimit = &uploadBwlimit
 
+	conf.uploadBwlimitInteral = *uploadBwlimitInternal
+
 	log.Println("S3DAEMON_HOST:", *conf.host)
 	log.Println("S3DAEMON_PORT:", *conf.port)
 	log.Println("S3DAEMON_ENDPOINT_URL:", *conf.endpoint_url)
@@ -264,6 +272,7 @@ func getConf() S3DConf {
 	log.Println("S3DAEMON_UPLOAD_TRIES:", *conf.uploadTries)
 	log.Println("S3DAEMON_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
 	log.Println("S3DAEMON_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
+	log.Println("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL:", conf.uploadBwlimitInteral)
 
 	return conf
 }
@@ -278,10 +287,28 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 	var httpClient *awshttp.BuildableClient
 
 	if conf.uploadBwlimit.Value() != 0 {
-		dialer := bwlimit.NewDialer(&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 0,
-		}, bwlimit.Byte(conf.uploadBwlimit.Value()/8), 0)
+		var dialCtx func(ctx context.Context, network, address string) (net.Conn, error)
+
+		if conf.uploadBwlimitInteral {
+			dialCtx = bwlimit.NewDialer(&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 0,
+			}, bwlimit.Byte(conf.uploadBwlimit.Value()/8), 0).DialContext
+		} else {
+			dialer := &net.Dialer{
+				Control: func(network, address string, conn syscall.RawConn) error {
+					// https://pkg.go.dev/syscall#RawConn
+					var operr error
+					if err := conn.Control(func(fd uintptr) {
+						operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(conf.uploadBwlimit.Value()/8))
+					}); err != nil {
+						return err
+					}
+					return operr
+				},
+			}
+			dialCtx = dialer.DialContext
+		}
 
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 			t.ExpectContinueTimeout = 0
@@ -293,7 +320,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 			// disable http/2 to prevent muxing over a single tcp connection
 			t.ForceAttemptHTTP2 = false
 			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
-			t.DialContext = dialer.DialContext
+			t.DialContext = dialCtx
 		})
 	} else {
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
