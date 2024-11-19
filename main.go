@@ -79,13 +79,20 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTas
 			Body: file,
 		})
 		if err != nil {
+			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
 			var noBucket *types.NoSuchBucket
 			if errors.As(err, &noBucket) {
 				log.Printf("upload %v:%v | Bucket does not exist.\n", *task.bucket, *task.key)
-				return noBucket // Don't retry if the bucket doesn't exist.
+				// Don't retry if the bucket doesn't exist.
+				return noBucket
 			}
 
-			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
+			if errors.Is(err, context.Canceled) {
+				log.Printf("upload %v:%v | context cancelled\n", *task.bucket, *task.key)
+				// Don't retry if the client disconnected
+				return err
+			}
+
 			log.Printf("upload %v:%v | failed because: %v\n", *task.bucket, *task.key, err)
 
 			// bubble up the error if we've exhausted our attempts
