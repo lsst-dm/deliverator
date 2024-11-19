@@ -48,12 +48,19 @@ type S3DHandler struct {
 	ParallelUploads *semaphore.Semaphore
 }
 
+type S3DUploadTask struct {
+	uri    *url.URL
+	bucket *string
+	key    *string
+	file   *string
+}
+
 // UploadObject uses the S3 upload manager to upload an object to a bucket.
-func (h *S3DHandler) UploadFileMultipart(ctx context.Context, bucket string, key string, fileName string) error {
+func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTask) error {
 	start := time.Now()
-	file, err := os.Open(fileName)
+	file, err := os.Open(*task.file)
 	if err != nil {
-		log.Printf("upload %v:%v | Couldn't open file %v to upload because: %v\n", bucket, key, fileName, err)
+		log.Printf("upload %v:%v | Couldn't open file %v to upload because: %v\n", *task.bucket, *task.key, *task.file, err)
 		return err
 	}
 	defer file.Close()
@@ -66,20 +73,20 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, bucket string, key
 		uploadCtx, cancel := context.WithTimeout(ctx, *h.Conf.uploadTimeout)
 		defer cancel()
 		_, err = h.Uploader.Upload(uploadCtx, &s3.PutObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
+			Bucket: aws.String(*task.bucket),
+			Key:    aws.String(*task.key),
 			// Body:   bytes.NewReader([]byte(data)),
 			Body: file,
 		})
 		if err != nil {
 			var noBucket *types.NoSuchBucket
 			if errors.As(err, &noBucket) {
-				log.Printf("upload %v:%v | Bucket %s does not exist.\n", bucket, key, bucket)
+				log.Printf("upload %v:%v | Bucket does not exist.\n", *task.bucket, *task.key)
 				return noBucket // Don't retry if the bucket doesn't exist.
 			}
 
-			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", bucket, key, time.Now().Sub(start), attempt, maxAttempts)
-			log.Printf("upload %v:%v | failed because: %v\n", bucket, key, err)
+			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
+			log.Printf("upload %v:%v | failed because: %v\n", *task.bucket, *task.key, err)
 
 			// bubble up the error if we've exhausted our attempts
 			if attempt == maxAttempts {
@@ -90,54 +97,54 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, bucket string, key
 		}
 	}
 
-	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", bucket, key, time.Now().Sub(start), attempt, maxAttempts)
+	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
 	return nil
+}
+
+func (h *S3DHandler) parseRequest(r *http.Request) (*S3DUploadTask, error) {
+	file := r.PostFormValue("file")
+	if file == "" {
+		return nil, fmt.Errorf("missing field: file")
+	}
+	uriRaw := r.PostFormValue("uri")
+	if uriRaw == "" {
+		return nil, fmt.Errorf("missing field: uri")
+	}
+
+	if !filepath.IsAbs(file) {
+		return nil, fmt.Errorf("Only absolute file paths are supported: %q", html.EscapeString(file))
+	}
+
+	uri, err := url.Parse(uriRaw)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse URI: %q", html.EscapeString(uriRaw))
+	}
+
+	if uri.Scheme != "s3" {
+		return nil, fmt.Errorf("Only s3 scheme is supported: %q", html.EscapeString(uriRaw))
+	}
+
+	bucket := uri.Host
+	if bucket == "" {
+		return nil, fmt.Errorf("Unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
+	}
+	key := uri.Path[1:] // Remove leading slash
+
+	return &S3DUploadTask{uri: uri, bucket: &bucket, key: &key, file: &file}, nil
 }
 
 func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
-	file := r.PostFormValue("file")
-	if file == "" {
-		w.Header().Set("x-missing-field", "file")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	uri := r.PostFormValue("uri")
-	if uri == "" {
-		w.Header().Set("x-missing-field", "uri")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	if !filepath.IsAbs(file) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Only absolute file paths are supported, %q\n", html.EscapeString(file))
-		return
-	}
-
-	u, err := url.Parse(uri)
+	task, err := h.parseRequest(r)
 	if err != nil {
+		w.Header().Set("x-error", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Unable to parse URI, %q\n", html.EscapeString(uri))
+		fmt.Fprintf(w, "error parsing request: %s\n", err)
 		return
 	}
 
-	if u.Scheme != "s3" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Only s3 scheme is supported, %q\n", html.EscapeString(uri))
-		return
-	}
-
-	bucket := u.Host
-	if bucket == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Unable to parse bucket from URI, %q\n", html.EscapeString(uri))
-		return
-	}
-	key := u.Path[1:] // Remove leading slash
-
-	log.Printf("queuing %v:%v | source %v\n", bucket, key, file)
+	log.Printf("queuing %v:%v | source %v\n", *task.bucket, *task.key, *task.file)
 
 	// limit the number of parallel uploads
 	semaCtx, cancel := context.WithTimeout(r.Context(), *h.Conf.queueTimeout)
@@ -145,19 +152,18 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := h.ParallelUploads.Acquire(semaCtx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
-		log.Printf("queue %v:%v | failed after %s: %s\n", bucket, key, time.Now().Sub(start), err)
+		log.Printf("queue %v:%v | failed after %s: %s\n", *task.bucket, *task.key, time.Now().Sub(start), err)
 		return
 	}
 	defer h.ParallelUploads.Release()
 
-	err = h.UploadFileMultipart(r.Context(), bucket, key, file)
-	if err != nil {
+	if err := h.UploadFileMultipart(r.Context(), task); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "error uploading file: %s\n", err)
 		return
 	}
 
-	fmt.Fprintf(w, "Successful put %q\n", html.EscapeString(uri))
+	fmt.Fprintf(w, "Successful put %q\n", html.EscapeString(task.uri.String()))
 }
 
 func getConf() S3DConf {
