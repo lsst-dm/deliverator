@@ -220,9 +220,9 @@ func getConf() S3DConf {
 
 	defaultUploadBwlimit := os.Getenv("S3DAEMON_UPLOAD_BWLIMIT")
 	if defaultUploadBwlimit == "" {
-		defaultUploadBwlimit = "10Mi"
+		defaultUploadBwlimit = "0"
 	}
-	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bytes per second (S3DAEMON_UPLOAD_BWLIMIT)")
+	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bits per second (S3DAEMON_UPLOAD_BWLIMIT)")
 
 	flag.Parse()
 	// end flags
@@ -275,23 +275,39 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 
 	maxConns := int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
 
-	dialer := bwlimit.NewDialer(&net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 0,
-	}, bwlimit.Byte(conf.uploadBwlimit.Value()), 0)
+	var httpClient *awshttp.BuildableClient
 
-	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
-		t.ExpectContinueTimeout = 0
-		t.IdleConnTimeout = 0
-		t.MaxIdleConns = maxConns
-		t.MaxConnsPerHost = maxConns
-		t.MaxIdleConnsPerHost = maxConns
-		t.WriteBufferSize = 64 * 1024
-		// disable http/2 to prevent muxing over a single tcp connection
-		t.ForceAttemptHTTP2 = false
-		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
-		t.DialContext = dialer.DialContext
-	})
+	if conf.uploadBwlimit.Value() != 0 {
+		dialer := bwlimit.NewDialer(&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 0,
+		}, bwlimit.Byte(conf.uploadBwlimit.Value()/8), 0)
+
+		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
+			t.ExpectContinueTimeout = 0
+			t.IdleConnTimeout = 0
+			t.MaxIdleConns = maxConns
+			t.MaxConnsPerHost = maxConns
+			t.MaxIdleConnsPerHost = maxConns
+			t.WriteBufferSize = 64 * 1024
+			// disable http/2 to prevent muxing over a single tcp connection
+			t.ForceAttemptHTTP2 = false
+			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+			t.DialContext = dialer.DialContext
+		})
+	} else {
+		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
+			t.ExpectContinueTimeout = 0
+			t.IdleConnTimeout = 0
+			t.MaxIdleConns = maxConns
+			t.MaxConnsPerHost = maxConns
+			t.MaxIdleConnsPerHost = maxConns
+			t.WriteBufferSize = 64 * 1024
+			// disable http/2 to prevent muxing over a single tcp connection
+			t.ForceAttemptHTTP2 = false
+			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+		})
+	}
 
 	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),
