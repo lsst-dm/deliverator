@@ -34,13 +34,14 @@ type S3DConf struct {
 	endpoint_url *string
 	// access_key   *string
 	// secret_key   *string
-	maxParallelUploads   *int64
-	uploadTimeout        *time.Duration
-	queueTimeout         *time.Duration
-	uploadTries          *int
-	uploadPartsize       *k8sresource.Quantity
-	uploadBwlimit        *k8sresource.Quantity
-	uploadBwlimitInteral bool
+	maxParallelUploads    *int64
+	uploadTimeout         *time.Duration
+	queueTimeout          *time.Duration
+	uploadTries           *int
+	uploadPartsize        *k8sresource.Quantity
+	uploadBwlimit         *k8sresource.Quantity
+	uploadBwlimitInteral  bool
+	uploadWriteBufferSize *k8sresource.Quantity
 }
 
 type S3DHandler struct {
@@ -230,6 +231,12 @@ func getConf() S3DConf {
 	defaultUploadBwlimitInternal, _ := strconv.ParseBool(os.Getenv("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL"))
 	uploadBwlimitInternal := flag.Bool("upload-bwlimit-internal", defaultUploadBwlimitInternal, "Use internal tcp pacing instead of fq (S3DAEMON_UPLOAD_BWLIMIT_INTERNAL)")
 
+	defaultUploadWriteBufferSize := os.Getenv("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE")
+	if defaultUploadWriteBufferSize == "" {
+		defaultUploadWriteBufferSize = "64Ki"
+	}
+	uploadWriteBufferSizeRaw := flag.String("upload-write-buffer-size", defaultUploadWriteBufferSize, "Upload Write Buffer Size (S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE)")
+
 	flag.Parse()
 	// end flags
 
@@ -263,6 +270,12 @@ func getConf() S3DConf {
 
 	conf.uploadBwlimitInteral = *uploadBwlimitInternal
 
+	uploadWriteBufferSize, err := k8sresource.ParseQuantity(*uploadWriteBufferSizeRaw)
+	if err != nil {
+		log.Fatal("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE is invalid")
+	}
+	conf.uploadWriteBufferSize = &uploadWriteBufferSize
+
 	log.Println("S3DAEMON_HOST:", *conf.host)
 	log.Println("S3DAEMON_PORT:", *conf.port)
 	log.Println("S3DAEMON_ENDPOINT_URL:", *conf.endpoint_url)
@@ -273,6 +286,7 @@ func getConf() S3DConf {
 	log.Println("S3DAEMON_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
 	log.Println("S3DAEMON_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
 	log.Println("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL:", conf.uploadBwlimitInteral)
+	log.Println("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE:", conf.uploadWriteBufferSize.String())
 
 	return conf
 }
@@ -316,7 +330,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 			t.MaxIdleConns = maxConns
 			t.MaxConnsPerHost = maxConns
 			t.MaxIdleConnsPerHost = maxConns
-			t.WriteBufferSize = 64 * 1024
+			t.WriteBufferSize = int(conf.uploadWriteBufferSize.Value())
 			// disable http/2 to prevent muxing over a single tcp connection
 			t.ForceAttemptHTTP2 = false
 			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
@@ -329,7 +343,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 			t.MaxIdleConns = maxConns
 			t.MaxConnsPerHost = maxConns
 			t.MaxIdleConnsPerHost = maxConns
-			t.WriteBufferSize = 64 * 1024
+			t.WriteBufferSize = int(conf.uploadWriteBufferSize.Value())
 			// disable http/2 to prevent muxing over a single tcp connection
 			t.ForceAttemptHTTP2 = false
 			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
