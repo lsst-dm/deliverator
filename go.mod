@@ -7,7 +7,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.3
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.37
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.3
-	github.com/conduitio/bwlimit v0.1.0
 	github.com/hyperledger/fabric v2.1.1+incompatible
 	golang.org/x/sys v0.26.0
 	k8s.io/apimachinery v0.31.2
@@ -33,6 +32,5 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/onsi/gomega v1.35.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/time v0.3.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )

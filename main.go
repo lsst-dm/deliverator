@@ -22,7 +22,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/conduitio/bwlimit"
 	"github.com/hyperledger/fabric/common/semaphore"
 	"golang.org/x/sys/unix"
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
@@ -38,7 +37,6 @@ type S3ndConf struct {
 	uploadTries           *int
 	uploadPartsize        *k8sresource.Quantity
 	uploadBwlimit         *k8sresource.Quantity
-	uploadBwlimitInteral  bool
 	uploadWriteBufferSize *k8sresource.Quantity
 }
 
@@ -222,9 +220,6 @@ func getConf() S3ndConf {
 	}
 	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bits per second (S3ND_UPLOAD_BWLIMIT)")
 
-	defaultUploadBwlimitInternal, _ := strconv.ParseBool(os.Getenv("S3ND_UPLOAD_BWLIMIT_INTERNAL"))
-	uploadBwlimitInternal := flag.Bool("upload-bwlimit-internal", defaultUploadBwlimitInternal, "Use internal tcp pacing instead of fq (S3ND_UPLOAD_BWLIMIT_INTERNAL)")
-
 	defaultUploadWriteBufferSize := os.Getenv("S3ND_UPLOAD_WRITE_BUFFER_SIZE")
 	if defaultUploadWriteBufferSize == "" {
 		defaultUploadWriteBufferSize = "64Ki"
@@ -262,8 +257,6 @@ func getConf() S3ndConf {
 	}
 	conf.uploadBwlimit = &uploadBwlimit
 
-	conf.uploadBwlimitInteral = *uploadBwlimitInternal
-
 	uploadWriteBufferSize, err := k8sresource.ParseQuantity(*uploadWriteBufferSizeRaw)
 	if err != nil {
 		log.Fatal("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
@@ -279,7 +272,6 @@ func getConf() S3ndConf {
 	log.Println("S3ND_UPLOAD_TRIES:", *conf.uploadTries)
 	log.Println("S3ND_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
 	log.Println("S3ND_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
-	log.Println("S3ND_UPLOAD_BWLIMIT_INTERNAL:", conf.uploadBwlimitInteral)
 	log.Println("S3ND_UPLOAD_WRITE_BUFFER_SIZE:", conf.uploadWriteBufferSize.String())
 
 	return conf
@@ -295,27 +287,17 @@ func NewHandler(conf *S3ndConf) *S3ndHandler {
 	var httpClient *awshttp.BuildableClient
 
 	if conf.uploadBwlimit.Value() != 0 {
-		var dialCtx func(ctx context.Context, network, address string) (net.Conn, error)
-
-		if conf.uploadBwlimitInteral {
-			dialCtx = bwlimit.NewDialer(&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 0,
-			}, bwlimit.Byte(conf.uploadBwlimit.Value()/8), 0).DialContext
-		} else {
-			dialer := &net.Dialer{
-				Control: func(network, address string, conn syscall.RawConn) error {
-					// https://pkg.go.dev/syscall#RawConn
-					var operr error
-					if err := conn.Control(func(fd uintptr) {
-						operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(conf.uploadBwlimit.Value()/8))
-					}); err != nil {
-						return err
-					}
-					return operr
-				},
-			}
-			dialCtx = dialer.DialContext
+		dialer := &net.Dialer{
+			Control: func(network, address string, conn syscall.RawConn) error {
+				// https://pkg.go.dev/syscall#RawConn
+				var operr error
+				if err := conn.Control(func(fd uintptr) {
+					operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(conf.uploadBwlimit.Value()/8))
+				}); err != nil {
+					return err
+				}
+				return operr
+			},
 		}
 
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
@@ -328,7 +310,7 @@ func NewHandler(conf *S3ndConf) *S3ndHandler {
 			// disable http/2 to prevent muxing over a single tcp connection
 			t.ForceAttemptHTTP2 = false
 			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
-			t.DialContext = dialCtx
+			t.DialContext = dialer.DialContext
 		})
 	} else {
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
