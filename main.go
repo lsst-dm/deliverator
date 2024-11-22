@@ -29,11 +29,9 @@ import (
 )
 
 type S3DConf struct {
-	host         *string
-	port         *int
-	endpoint_url *string
-	// access_key   *string
-	// secret_key   *string
+	host                  *string
+	port                  *int
+	endpoint_url          *string
 	maxParallelUploads    *int64
 	uploadTimeout         *time.Duration
 	queueTimeout          *time.Duration
@@ -59,7 +57,6 @@ type S3DUploadTask struct {
 	file   *string
 }
 
-// UploadObject uses the S3 upload manager to upload an object to a bucket.
 func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTask) error {
 	start := time.Now()
 	file, err := os.Open(*task.file)
@@ -68,8 +65,6 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTas
 		return err
 	}
 	defer file.Close()
-	// data, err := ioutil.ReadFile(fileName)
-	// log.Printf("slurped %v:%v in %s\n", bucket, key, time.Now().Sub(start))
 
 	maxAttempts := *h.Conf.uploadTries
 	var attempt int
@@ -79,8 +74,7 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTas
 		_, err = h.Uploader.Upload(uploadCtx, &s3.PutObjectInput{
 			Bucket: aws.String(*task.bucket),
 			Key:    aws.String(*task.key),
-			// Body:   bytes.NewReader([]byte(data)),
-			Body: file,
+			Body:   file,
 		})
 		if err != nil {
 			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
@@ -354,13 +348,6 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		context.TODO(),
 		config.WithBaseEndpoint(*conf.endpoint_url),
 		config.WithHTTPClient(httpClient),
-		// config.WithRetryer(func() aws.Retryer {
-		// 	return retry.NewStandard(func(o *retry.StandardOptions) {
-		// 		o.MaxAttempts = 10
-		// 		o.MaxBackoff = time.Millisecond * 500
-		// 		o.RateLimiter = ratelimit.None
-		// 	})
-		// }),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -370,21 +357,8 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 
 	handler.S3Client = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = true
-		o.Retryer = aws.NopRetryer{}
+		o.Retryer = aws.NopRetryer{} // we handle retries ourselves
 	})
-
-	/*
-		resp, err := s3Client.ListBuckets(context.TODO(), nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Print out the list of buckets
-		log.Println("Buckets:")
-		for _, bucket := range resp.Buckets {
-			log.Println(*bucket.Name)
-		}
-	*/
 
 	handler.Uploader = manager.NewUploader(handler.S3Client, func(u *manager.Uploader) {
 		u.Concurrency = 1000
