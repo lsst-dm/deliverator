@@ -28,11 +28,11 @@ import (
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
 
-type S3DConf struct {
+type S3ndConf struct {
 	host                  *string
 	port                  *int
-	endpoint_url          *string
-	maxParallelUploads    *int64
+	endpointUrl           *string
+	uploadMaxParallel     *int64
 	uploadTimeout         *time.Duration
 	queueTimeout          *time.Duration
 	uploadTries           *int
@@ -42,22 +42,22 @@ type S3DConf struct {
 	uploadWriteBufferSize *k8sresource.Quantity
 }
 
-type S3DHandler struct {
-	Conf            *S3DConf
+type S3ndHandler struct {
+	Conf            *S3ndConf
 	AwsConfig       *aws.Config
 	S3Client        *s3.Client
 	Uploader        *manager.Uploader
 	ParallelUploads *semaphore.Semaphore
 }
 
-type S3DUploadTask struct {
+type S3ndUploadTask struct {
 	uri    *url.URL
 	bucket *string
 	key    *string
 	file   *string
 }
 
-func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTask) error {
+func (h *S3ndHandler) UploadFileMultipart(ctx context.Context, task *S3ndUploadTask) error {
 	start := time.Now()
 	file, err := os.Open(*task.file)
 	if err != nil {
@@ -106,7 +106,7 @@ func (h *S3DHandler) UploadFileMultipart(ctx context.Context, task *S3DUploadTas
 	return nil
 }
 
-func (h *S3DHandler) parseRequest(r *http.Request) (*S3DUploadTask, error) {
+func (h *S3ndHandler) parseRequest(r *http.Request) (*S3ndUploadTask, error) {
 	file := r.PostFormValue("file")
 	if file == "" {
 		return nil, fmt.Errorf("missing field: file")
@@ -135,10 +135,10 @@ func (h *S3DHandler) parseRequest(r *http.Request) (*S3DUploadTask, error) {
 	}
 	key := uri.Path[1:] // Remove leading slash
 
-	return &S3DUploadTask{uri: uri, bucket: &bucket, key: &key, file: &file}, nil
+	return &S3ndUploadTask{uri: uri, bucket: &bucket, key: &key, file: &file}, nil
 }
 
-func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	task, err := h.parseRequest(r)
@@ -171,94 +171,94 @@ func (h *S3DHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Successful put %q\n", html.EscapeString(task.uri.String()))
 }
 
-func getConf() S3DConf {
-	conf := S3DConf{}
+func getConf() S3ndConf {
+	conf := S3ndConf{}
 
 	// start flags
-	conf.host = flag.String("host", os.Getenv("S3DAEMON_HOST"), "S3 Daemon Host (S3DAEMON_HOST)")
+	conf.host = flag.String("host", os.Getenv("S3ND_HOST"), "S3 Daemon Host (S3ND_HOST)")
 
-	defaultPort, _ := strconv.Atoi(os.Getenv("S3DAEMON_PORT"))
+	defaultPort, _ := strconv.Atoi(os.Getenv("S3ND_PORT"))
 	if defaultPort == 0 {
 		defaultPort = 15555
 	}
-	conf.port = flag.Int("port", defaultPort, "S3 Daemon Port (S3DAEMON_PORT)")
+	conf.port = flag.Int("port", defaultPort, "S3 Daemon Port (S3ND_PORT)")
 
-	conf.endpoint_url = flag.String("s3-endpoint-url", os.Getenv("S3_ENDPOINT_URL"), "S3 Endpoint URL (S3_ENDPOINT_URL)")
+	conf.endpointUrl = flag.String("endpoint-url", os.Getenv("S3ND_ENDPOINT_URL"), "S3 Endpoint URL (S3ND_ENDPOINT_URL)")
 
-	var defaultMaxParallelUploads int64
-	defaultMaxParallelUploads, _ = strconv.ParseInt(os.Getenv("S3DAEMON_MAX_PARALLEL_UPLOADS"), 10, 64)
-	if defaultMaxParallelUploads == 0 {
-		defaultMaxParallelUploads = 100
+	var defaultUploadMaxParallel int64
+	defaultUploadMaxParallel, _ = strconv.ParseInt(os.Getenv("S3ND_UPLOAD_MAX_PARALLEL"), 10, 64)
+	if defaultUploadMaxParallel == 0 {
+		defaultUploadMaxParallel = 100
 	}
-	conf.maxParallelUploads = flag.Int64("max-parallel-uploads", defaultMaxParallelUploads, "Max Parallel Uploads (S3DAEMON_MAX_PARALLEL_UPLOADS)")
+	conf.uploadMaxParallel = flag.Int64("upload-max-parallel", defaultUploadMaxParallel, "Maximum number of parallel object uploads (S3ND_UPLOAD_MAX_PARALLEL)")
 
-	defaultUploadTimeout := os.Getenv("S3DAEMON_UPLOAD_TIMEOUT")
+	defaultUploadTimeout := os.Getenv("S3ND_UPLOAD_TIMEOUT")
 	if defaultUploadTimeout == "" {
 		defaultUploadTimeout = "10s"
 	}
-	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (S3DAEMON_UPLOAD_TIMEOUT)")
+	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (S3ND_UPLOAD_TIMEOUT)")
 
-	defaultQueueTimeout := os.Getenv("S3DAEMON_QUEUE_TIMEOUT")
+	defaultQueueTimeout := os.Getenv("S3ND_QUEUE_TIMEOUT")
 	if defaultQueueTimeout == "" {
 		defaultQueueTimeout = "10s"
 	}
-	queueTimeout := flag.String("queue-timeout", defaultQueueTimeout, "Queue Timeout waiting for transfer to start (S3DAEMON_QUEUE_TIMEOUT)")
+	queueTimeout := flag.String("queue-timeout", defaultQueueTimeout, "Queue Timeout waiting for transfer to start (S3ND_QUEUE_TIMEOUT)")
 
-	defaultUploadTries, _ := strconv.Atoi(os.Getenv("S3DAEMON_UPLOAD_TRIES"))
+	defaultUploadTries, _ := strconv.Atoi(os.Getenv("S3ND_UPLOAD_TRIES"))
 	if defaultUploadTries == 0 {
 		defaultUploadTries = 1
 	}
-	conf.uploadTries = flag.Int("upload-tries", defaultUploadTries, "Max number of upload tries (S3DAEMON_UPLOAD_TRIES)")
+	conf.uploadTries = flag.Int("upload-tries", defaultUploadTries, "Max number of upload tries (S3ND_UPLOAD_TRIES)")
 
-	defaultUploadPartsize := os.Getenv("S3DAEMON_UPLOAD_PARTSIZE")
+	defaultUploadPartsize := os.Getenv("S3ND_UPLOAD_PARTSIZE")
 	if defaultUploadPartsize == "" {
 		defaultUploadPartsize = "5Mi"
 	}
-	uploadPartsizeRaw := flag.String("upload-partsize", defaultUploadPartsize, "Upload Part Size (S3DAEMON_UPLOAD_PARTSIZE)")
+	uploadPartsizeRaw := flag.String("upload-partsize", defaultUploadPartsize, "Upload Part Size (S3ND_UPLOAD_PARTSIZE)")
 
-	defaultUploadBwlimit := os.Getenv("S3DAEMON_UPLOAD_BWLIMIT")
+	defaultUploadBwlimit := os.Getenv("S3ND_UPLOAD_BWLIMIT")
 	if defaultUploadBwlimit == "" {
 		defaultUploadBwlimit = "0"
 	}
-	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bits per second (S3DAEMON_UPLOAD_BWLIMIT)")
+	uploadBwlimitRaw := flag.String("upload-bwlimit", defaultUploadBwlimit, "Upload bandwidth limit in bits per second (S3ND_UPLOAD_BWLIMIT)")
 
-	defaultUploadBwlimitInternal, _ := strconv.ParseBool(os.Getenv("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL"))
-	uploadBwlimitInternal := flag.Bool("upload-bwlimit-internal", defaultUploadBwlimitInternal, "Use internal tcp pacing instead of fq (S3DAEMON_UPLOAD_BWLIMIT_INTERNAL)")
+	defaultUploadBwlimitInternal, _ := strconv.ParseBool(os.Getenv("S3ND_UPLOAD_BWLIMIT_INTERNAL"))
+	uploadBwlimitInternal := flag.Bool("upload-bwlimit-internal", defaultUploadBwlimitInternal, "Use internal tcp pacing instead of fq (S3ND_UPLOAD_BWLIMIT_INTERNAL)")
 
-	defaultUploadWriteBufferSize := os.Getenv("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE")
+	defaultUploadWriteBufferSize := os.Getenv("S3ND_UPLOAD_WRITE_BUFFER_SIZE")
 	if defaultUploadWriteBufferSize == "" {
 		defaultUploadWriteBufferSize = "64Ki"
 	}
-	uploadWriteBufferSizeRaw := flag.String("upload-write-buffer-size", defaultUploadWriteBufferSize, "Upload Write Buffer Size (S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE)")
+	uploadWriteBufferSizeRaw := flag.String("upload-write-buffer-size", defaultUploadWriteBufferSize, "Upload Write Buffer Size (S3ND_UPLOAD_WRITE_BUFFER_SIZE)")
 
 	flag.Parse()
 	// end flags
 
-	if *conf.endpoint_url == "" {
-		log.Fatal("S3_ENDPOINT_URL is required")
+	if *conf.endpointUrl == "" {
+		log.Fatal("S3ND_ENDPOINT_URL is required")
 	}
 
 	uploadTimeoutDuration, err := time.ParseDuration(*uploadTimeout)
 	if err != nil {
-		log.Fatal("S3DAEMON_UPLOAD_TIMEOUT is invalid")
+		log.Fatal("S3ND_UPLOAD_TIMEOUT is invalid")
 	}
 	conf.uploadTimeout = &uploadTimeoutDuration
 
 	queueTimeoutDuration, err := time.ParseDuration(*queueTimeout)
 	if err != nil {
-		log.Fatal("S3DAEMON_QUEUE_TIMEOUT is invalid")
+		log.Fatal("S3ND_QUEUE_TIMEOUT is invalid")
 	}
 	conf.queueTimeout = &queueTimeoutDuration
 
 	uploadPartsize, err := k8sresource.ParseQuantity(*uploadPartsizeRaw)
 	if err != nil {
-		log.Fatal("S3DAEMON_UPLOAD_PARTSIZE is invalid")
+		log.Fatal("S3ND_UPLOAD_PARTSIZE is invalid")
 	}
 	conf.uploadPartsize = &uploadPartsize
 
 	uploadBwlimit, err := k8sresource.ParseQuantity(*uploadBwlimitRaw)
 	if err != nil {
-		log.Fatal("S3DAEMON_UPLOAD_BWLIMIT is invalid")
+		log.Fatal("S3ND_UPLOAD_BWLIMIT is invalid")
 	}
 	conf.uploadBwlimit = &uploadBwlimit
 
@@ -266,31 +266,31 @@ func getConf() S3DConf {
 
 	uploadWriteBufferSize, err := k8sresource.ParseQuantity(*uploadWriteBufferSizeRaw)
 	if err != nil {
-		log.Fatal("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE is invalid")
+		log.Fatal("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
 	}
 	conf.uploadWriteBufferSize = &uploadWriteBufferSize
 
-	log.Println("S3DAEMON_HOST:", *conf.host)
-	log.Println("S3DAEMON_PORT:", *conf.port)
-	log.Println("S3DAEMON_ENDPOINT_URL:", *conf.endpoint_url)
-	log.Println("S3DAEMON_MAX_PARALLEL_UPLOADS:", *conf.maxParallelUploads)
-	log.Println("S3DAEMON_UPLOAD_TIMEOUT:", *conf.uploadTimeout)
-	log.Println("S3DAEMON_QUEUE_TIMEOUT:", *conf.queueTimeout)
-	log.Println("S3DAEMON_UPLOAD_TRIES:", *conf.uploadTries)
-	log.Println("S3DAEMON_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
-	log.Println("S3DAEMON_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
-	log.Println("S3DAEMON_UPLOAD_BWLIMIT_INTERNAL:", conf.uploadBwlimitInteral)
-	log.Println("S3DAEMON_UPLOAD_WRITE_BUFFER_SIZE:", conf.uploadWriteBufferSize.String())
+	log.Println("S3ND_HOST:", *conf.host)
+	log.Println("S3ND_PORT:", *conf.port)
+	log.Println("S3ND_ENDPOINT_URL:", *conf.endpointUrl)
+	log.Println("S3ND_UPLOAD_MAX_PARALLEL:", *conf.uploadMaxParallel)
+	log.Println("S3ND_UPLOAD_TIMEOUT:", *conf.uploadTimeout)
+	log.Println("S3ND_QUEUE_TIMEOUT:", *conf.queueTimeout)
+	log.Println("S3ND_UPLOAD_TRIES:", *conf.uploadTries)
+	log.Println("S3ND_UPLOAD_PARTSIZE:", conf.uploadPartsize.String())
+	log.Println("S3ND_UPLOAD_BWLIMIT:", conf.uploadBwlimit.String())
+	log.Println("S3ND_UPLOAD_BWLIMIT_INTERNAL:", conf.uploadBwlimitInteral)
+	log.Println("S3ND_UPLOAD_WRITE_BUFFER_SIZE:", conf.uploadWriteBufferSize.String())
 
 	return conf
 }
 
-func NewHandler(conf *S3DConf) *S3DHandler {
-	handler := &S3DHandler{
+func NewHandler(conf *S3ndConf) *S3ndHandler {
+	handler := &S3ndHandler{
 		Conf: conf,
 	}
 
-	maxConns := int(*conf.maxParallelUploads * 5) // allow for multipart upload creation
+	maxConns := int(*conf.uploadMaxParallel * 5) // allow for multipart upload creation
 
 	var httpClient *awshttp.BuildableClient
 
@@ -346,7 +346,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 
 	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),
-		config.WithBaseEndpoint(*conf.endpoint_url),
+		config.WithBaseEndpoint(*conf.endpointUrl),
 		config.WithHTTPClient(httpClient),
 	)
 	if err != nil {
@@ -366,7 +366,7 @@ func NewHandler(conf *S3DConf) *S3DHandler {
 		u.PartSize = conf.uploadPartsize.Value()
 	})
 
-	sema := semaphore.New(int(*conf.maxParallelUploads))
+	sema := semaphore.New(int(*conf.uploadMaxParallel))
 	handler.ParallelUploads = &sema
 
 	return handler

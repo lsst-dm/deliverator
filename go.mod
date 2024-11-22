@@ -1,4 +1,4 @@
-module github.com/lsst-dm/s3daemon-go
+module github.com/lsst-dm/s3nd
 
 go 1.22.7
 
