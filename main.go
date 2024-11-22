@@ -385,6 +385,6 @@ func main() {
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Printf("server closed\n")
 	} else if err != nil {
-		log.Fatal("error starting server: %s\n", err)
+		log.Fatalf("error starting server: %s\n", err)
 	}
 }
