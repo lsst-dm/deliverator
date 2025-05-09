@@ -137,7 +137,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := h.parallelUploads.Acquire(semaCtx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
-		log.Printf("queue %v:%v | failed after %s: %s\n", *task.bucket, *task.key, time.Now().Sub(start), err)
+		log.Printf("queue %v:%v | failed after %s: %s\n", *task.bucket, *task.key, time.Since(start), err)
 		return
 	}
 	defer h.parallelUploads.Release()
@@ -162,21 +162,21 @@ func (h *S3ndHandler) parseRequest(r *http.Request) (*s3ndUploadTask, error) {
 	}
 
 	if !filepath.IsAbs(file) {
-		return nil, fmt.Errorf("Only absolute file paths are supported: %q", html.EscapeString(file))
+		return nil, fmt.Errorf("only absolute file paths are supported: %q", html.EscapeString(file))
 	}
 
 	uri, err := url.Parse(uriRaw)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to parse URI: %q", html.EscapeString(uriRaw))
+		return nil, fmt.Errorf("unable to parse URI: %q", html.EscapeString(uriRaw))
 	}
 
 	if uri.Scheme != "s3" {
-		return nil, fmt.Errorf("Only s3 scheme is supported: %q", html.EscapeString(uriRaw))
+		return nil, fmt.Errorf("only s3 scheme is supported: %q", html.EscapeString(uriRaw))
 	}
 
 	bucket := uri.Host
 	if bucket == "" {
-		return nil, fmt.Errorf("Unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
+		return nil, fmt.Errorf("unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
 	}
 	key := uri.Path[1:] // Remove leading slash
 
@@ -203,7 +203,7 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *s3ndUploadT
 			Body:   file,
 		})
 		if err != nil {
-			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
+			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Since(start), attempt, maxAttempts)
 			var noBucket *types.NoSuchBucket
 			if errors.As(err, &noBucket) {
 				log.Printf("upload %v:%v | Bucket does not exist.\n", *task.bucket, *task.key)
@@ -228,6 +228,6 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *s3ndUploadT
 		}
 	}
 
-	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", *task.bucket, *task.key, time.Now().Sub(start), attempt, maxAttempts)
+	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", *task.bucket, *task.key, time.Since(start), attempt, maxAttempts)
 	return nil
 }
