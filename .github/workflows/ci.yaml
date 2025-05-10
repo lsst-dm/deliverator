@@ -81,6 +81,8 @@ jobs:
     needs: build
     if: github.repository == 'lsst-dm/s3nd'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -120,6 +122,54 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Export first tag for downstream jobs
+        id: pick
+        run: |
+          echo "tag=$(echo '${{ steps.meta.outputs.tags }}' | grep sha- | head -n1)" >>"$GITHUB_OUTPUT"
+
+  e2e:
+    name: e2e accaptence test
+    if: github.event_name != 'pull_request'
+    needs: oci_image
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: miniouser
+      AWS_SECRET_ACCESS_KEY: miniopass
+    steps:
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: runner.debug
+        with:
+          detached: true
+
+      - name: start minio
+        uses: infleet/minio-action@v0.0.1
+        with:
+          port: "9000"
+          version: latest
+          username: ${{ env.AWS_ACCESS_KEY_ID }}
+          password: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: install s5cmd
+        uses: derekn/s5cmd-action@v2
+        with:
+          version: 2.3.0
+
+      - name: start s3nd
+        env:
+          S3ND_ENDPOINT_URL: http://localhost:9000
+          AWS_REGION: foo
+        run: docker run -d --network host -v $(pwd):$(pwd) -e S3ND_ENDPOINT_URL -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY ${{ needs.oci_image.outputs.tag }}
+
+      - name: create test1 bucket
+        run: |
+          s5cmd --endpoint-url http://localhost:9000 mb s3://test1
+
+      - name: send a file
+        run: |
+          touch foo1
+          curl -vvv --fail-with-body -d file=$(pwd)/foo1 -d "uri=s3://test1/foo1" http://localhost:15555
 
   gh-release:
     name: Create GitHub Release
