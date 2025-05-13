@@ -26,7 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.23"
 
       - name: Build
         run: go build -v ./...
@@ -149,5 +149,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
-          goversion: "1.22"
+          goversion: "1.23"
           asset_name: '${{ github.event.repository.name }}-${{ matrix.goos }}-${{ matrix.goarch }}'

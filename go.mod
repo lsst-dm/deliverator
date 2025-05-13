@@ -1,6 +1,6 @@
 module github.com/lsst-dm/s3nd
 
-go 1.22.7
+go 1.23.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.32.4
