@@ -29,7 +29,11 @@ func NewConf() S3ndConf {
 	conf := S3ndConf{}
 
 	// start flags
-	conf.Host = flag.String("host", os.Getenv("S3ND_HOST"), "S3 Daemon Host (S3ND_HOST)")
+	defaultHost, ok := os.LookupEnv("S3ND_HOST")
+	if !ok {
+		defaultHost = "localhost"
+	}
+	conf.Host = flag.String("host", defaultHost, "S3 Daemon Host (S3ND_HOST)")
 
 	defaultPort, _ := strconv.Atoi(os.Getenv("S3ND_PORT"))
 	if defaultPort == 0 {
