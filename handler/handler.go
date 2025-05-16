@@ -2,10 +2,10 @@ package handler
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"html"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,9 +21,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
+	"github.com/google/uuid"
 	"github.com/hyperledger/fabric/common/semaphore"
+	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	logger                  = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	errUploadAttemptTimeout = errors.New("upload attempt timeout")
 )
 
 type S3ndHandler struct {
@@ -34,11 +41,40 @@ type S3ndHandler struct {
 	parallelUploads *semaphore.Semaphore
 }
 
-type s3ndUploadTask struct {
-	uri    *url.URL
-	bucket *string
-	key    *string
-	file   *string
+type uploadTask struct {
+	Id        uuid.UUID   `json:"id"`
+	Uri       *requestURL `json:"uri,omitempty"`
+	Bucket    *string     `json:"-"`
+	Key       *string     `json:"-"`
+	File      *string     `json:"file,omitempty"`
+	StartTime time.Time   `json:"-"`
+	EndTime   time.Time   `json:"-"`
+	Duration  string      `json:"duration,omitempty"`
+	Attempts  int         `json:"attempts,omitzero"`
+}
+
+func newUploadRequest(startTime time.Time) *uploadTask {
+	return &uploadTask{
+		Id:        uuid.New(),
+		StartTime: startTime,
+	}
+}
+
+func (t *uploadTask) stop() {
+	t.EndTime = time.Now()
+	t.Duration = t.EndTime.Sub(t.StartTime).String()
+}
+
+type requestURL struct{ url.URL }
+
+func (u requestURL) MarshalText() ([]byte, error) {
+	return []byte(u.String()), nil
+}
+
+type requestStatus struct {
+	Code int         `json:"code"`
+	Msg  string      `json:"msg,omitempty"`
+	Task *uploadTask `json:"task,omitempty"`
 }
 
 func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
@@ -90,7 +126,8 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		config.WithHTTPClient(httpClient),
 	)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error(err.Error())
+		os.Exit(1)
 	}
 
 	handler.awsConfig = &awsCfg
@@ -113,115 +150,181 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 }
 
 func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	task, err := h.parseRequest(r)
-	if err != nil {
-		w.Header().Set("x-error", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "error parsing request: %s\n", err)
-		return
+	status := h.doServeHTTP(r)
+	if status.Code == http.StatusOK {
+		logger.Info(
+			status.Msg,
+			slog.Int("code", status.Code),
+			slog.Any("task", status.Task),
+		)
+	} else {
+		logger.Error(
+			status.Msg,
+			slog.Int("code", status.Code),
+			slog.Any("task", status.Task),
+		)
+		w.Header().Set("x-error", status.Msg)
 	}
 
-	log.Printf("queuing %v:%v | source %v\n", *task.bucket, *task.key, *task.file)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status.Code)
+	_ = json.NewEncoder(w).Encode(status)
+}
+
+func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
+	// create starting timestamp as early as possible
+	task := newUploadRequest(time.Now())
+
+	err := h.parseRequest(task, r)
+	if err != nil {
+		task.stop()
+		return requestStatus{
+			Code: http.StatusBadRequest,
+			Msg:  errors.Wrapf(err, "error parsing request").Error(),
+			Task: task,
+		}
+	}
+
+	logger.Info(
+		"queueing",
+		slog.Any("task", task),
+	)
 
 	// limit the number of parallel uploads
 	semaCtx, cancel := context.WithTimeout(r.Context(), *h.conf.QueueTimeout)
 	defer cancel()
 	if err := h.parallelUploads.Acquire(semaCtx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, "error acquiring semaphore: %s\n", err)
-		log.Printf("queue %v:%v | failed after %s: %s\n", *task.bucket, *task.key, time.Since(start), err)
-		return
+		task.stop()
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errors.Wrap(err, "upload queue timeout")
+		} else {
+			err = errors.Wrap(err, "unable to aquire upload queue semaphore")
+		}
+		return requestStatus{
+			Code: http.StatusGatewayTimeout,
+			Msg:  err.Error(),
+			Task: task,
+		}
 	}
 	defer h.parallelUploads.Release()
 
+	logger.Info(
+		"upload starting",
+		slog.Any("task", task),
+	)
+
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "error uploading file: %s\n", err)
-		return
+		task.stop()
+		return requestStatus{
+			Code: http.StatusInternalServerError,
+			Msg:  err.Error(),
+			Task: task,
+		}
 	}
 
-	fmt.Fprintf(w, "Successful put %q\n", html.EscapeString(task.uri.String()))
+	task.stop()
+
+	return requestStatus{
+		Code: http.StatusOK,
+		Msg:  "upload succeeded",
+		Task: task,
+	}
 }
 
-func (h *S3ndHandler) parseRequest(r *http.Request) (*s3ndUploadTask, error) {
-	file := r.PostFormValue("file")
-	if file == "" {
-		return nil, fmt.Errorf("missing field: file")
-	}
-	uriRaw := r.PostFormValue("uri")
-	if uriRaw == "" {
-		return nil, fmt.Errorf("missing field: uri")
+func (h *S3ndHandler) parseRequest(task *uploadTask, r *http.Request) error {
+	{
+		file := r.PostFormValue("file")
+		if file == "" {
+			return fmt.Errorf("missing field: file")
+		}
+
+		if !filepath.IsAbs(file) {
+			return fmt.Errorf("only absolute file paths are supported: %q", html.EscapeString(file))
+		}
+
+		task.File = &file
 	}
 
-	if !filepath.IsAbs(file) {
-		return nil, fmt.Errorf("only absolute file paths are supported: %q", html.EscapeString(file))
+	{
+		uriRaw := r.PostFormValue("uri")
+		if uriRaw == "" {
+			return fmt.Errorf("missing field: uri")
+		}
+
+		uri, err := url.Parse(uriRaw)
+		if err != nil {
+			return fmt.Errorf("unable to parse URI: %q", html.EscapeString(uriRaw))
+		}
+
+		if uri.Scheme != "s3" {
+			return fmt.Errorf("only s3 scheme is supported: %q", html.EscapeString(uriRaw))
+		}
+
+		bucket := uri.Host
+		if bucket == "" {
+			return fmt.Errorf("unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
+		}
+
+		key := uri.Path[1:] // Remove leading slash
+
+		task.Uri = &requestURL{*uri}
+		task.Bucket = &bucket
+		task.Key = &key
 	}
 
-	uri, err := url.Parse(uriRaw)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse URI: %q", html.EscapeString(uriRaw))
-	}
-
-	if uri.Scheme != "s3" {
-		return nil, fmt.Errorf("only s3 scheme is supported: %q", html.EscapeString(uriRaw))
-	}
-
-	bucket := uri.Host
-	if bucket == "" {
-		return nil, fmt.Errorf("unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
-	}
-	key := uri.Path[1:] // Remove leading slash
-
-	return &s3ndUploadTask{uri: uri, bucket: &bucket, key: &key, file: &file}, nil
+	return nil
 }
 
-func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *s3ndUploadTask) error {
-	start := time.Now()
-	file, err := os.Open(*task.file)
+func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *uploadTask) error {
+	file, err := os.Open(*task.File)
 	if err != nil {
-		log.Printf("upload %v:%v | Couldn't open file %v to upload because: %v\n", *task.bucket, *task.key, *task.file, err)
-		return err
+		return errors.Wrapf(err, "Could not open file %v to upload", *task.File)
 	}
 	defer file.Close()
 
 	maxAttempts := *h.conf.UploadTries
-	var attempt int
-	for attempt = 1; attempt <= maxAttempts; attempt++ {
-		uploadCtx, cancel := context.WithTimeout(ctx, *h.conf.UploadTimeout)
+	for task.Attempts = 1; task.Attempts <= maxAttempts; task.Attempts++ {
+		uploadCtx, cancel := context.WithTimeoutCause(ctx, *h.conf.UploadTimeout, errUploadAttemptTimeout)
 		defer cancel()
 		_, err = h.uploader.Upload(uploadCtx, &s3.PutObjectInput{
-			Bucket: aws.String(*task.bucket),
-			Key:    aws.String(*task.key),
+			Bucket: aws.String(*task.Bucket),
+			Key:    aws.String(*task.Key),
 			Body:   file,
 		})
 		if err != nil {
-			log.Printf("upload %v:%v | failed after %s -- try %v/%v\n", *task.bucket, *task.key, time.Since(start), attempt, maxAttempts)
-			var noBucket *types.NoSuchBucket
-			if errors.As(err, &noBucket) {
-				log.Printf("upload %v:%v | Bucket does not exist.\n", *task.bucket, *task.key)
-				// Don't retry if the bucket doesn't exist.
-				return noBucket
+			var apiErr smithy.APIError
+			cause := context.Cause(uploadCtx)
+
+			switch {
+			case errors.As(err, &apiErr):
+				if apiErr.ErrorCode() == "NoSuchBucket" {
+					return errors.Wrapf(err, "upload failed because the bucket %v does not exist", *task.Bucket)
+				}
+			case errors.Is(cause, errUploadAttemptTimeout):
+				errMsg := fmt.Sprintf("upload attempt %v/%v timeout", task.Attempts, maxAttempts)
+
+				// bubble up the error if we've exhausted our attempts
+				if task.Attempts == maxAttempts {
+					return errors.Wrap(err, errMsg)
+				}
+				// otherwise, log the timeout and carry on
+				logger.Warn(errMsg, slog.Any("task", task))
+				continue
+			case errors.Is(err, context.Canceled):
+				// the parent context was cancelled
+				return errors.Wrapf(err, "upload attempt %v cancelled, probably because the client disconnected", task.Attempts)
 			}
 
-			if errors.Is(err, context.Canceled) {
-				log.Printf("upload %v:%v | context cancelled\n", *task.bucket, *task.key)
-				// Don't retry if the client disconnected
-				return err
+			// unknown error -- could be a server side problem so could retry
+			errMsg := fmt.Sprintf("unknown error during upload attempt %v/%v", task.Attempts, maxAttempts)
+			if task.Attempts == maxAttempts {
+				return errors.Wrap(err, errMsg)
 			}
-
-			log.Printf("upload %v:%v | failed because: %v\n", *task.bucket, *task.key, err)
-
-			// bubble up the error if we've exhausted our attempts
-			if attempt == maxAttempts {
-				return err
-			}
+			logger.Warn(errMsg, slog.Any("task", task))
 		} else {
 			break
 		}
 	}
 
-	log.Printf("upload %v:%v | success in %s after %v/%v tries\n", *task.bucket, *task.key, time.Since(start), attempt, maxAttempts)
 	return nil
 }

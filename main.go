@@ -3,8 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/lsst-dm/s3nd/conf"
@@ -13,7 +14,10 @@ import (
 )
 
 func main() {
-	log.Println("Starting s3nd version", version.Version)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	logger.Info("starting s3nd", "version", version.Version)
 
 	conf := conf.NewConf()
 
@@ -21,7 +25,7 @@ func main() {
 	http.Handle("/", handler)
 
 	addr := fmt.Sprintf("%s:%d", *conf.Host, *conf.Port)
-	log.Println("Listening on", addr)
+	logger.Info("listening", "address", addr)
 
 	s := &http.Server{
 		Addr:         addr,
@@ -30,8 +34,9 @@ func main() {
 	}
 	err := s.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
-		log.Printf("server closed\n")
+		logger.Info("server closed")
 	} else if err != nil {
-		log.Fatalf("error starting server: %s\n", err)
+		logger.Error("failed to start server", "error", err)
+		os.Exit(1)
 	}
 }

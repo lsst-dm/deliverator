@@ -1,13 +1,15 @@
 module github.com/lsst-dm/s3nd
 
-go 1.23.4
+go 1.24.3
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.32.4
 	github.com/aws/aws-sdk-go-v2/config v1.28.3
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.37
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.3
+	github.com/google/uuid v1.6.0
 	github.com/hyperledger/fabric v2.1.1+incompatible
+	github.com/pkg/errors v0.9.1
 	golang.org/x/sys v0.26.0
 	k8s.io/apimachinery v0.31.2
 )

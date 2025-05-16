@@ -2,13 +2,15 @@ package conf
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
 
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
+
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 type S3ndConf struct {
 	Host                  *string
@@ -90,49 +92,59 @@ func NewConf() S3ndConf {
 	// end flags
 
 	if *conf.EndpointUrl == "" {
-		log.Fatal("S3ND_ENDPOINT_URL is required")
+		logger.Error("S3ND_ENDPOINT_URL is required")
+		os.Exit(1)
 	}
 
 	uploadTimeoutDuration, err := time.ParseDuration(*uploadTimeout)
 	if err != nil {
-		log.Fatal("S3ND_UPLOAD_TIMEOUT is invalid")
+		logger.Error("S3ND_UPLOAD_TIMEOUT is invalid")
+		os.Exit(1)
 	}
 	conf.UploadTimeout = &uploadTimeoutDuration
 
 	queueTimeoutDuration, err := time.ParseDuration(*queueTimeout)
 	if err != nil {
-		log.Fatal("S3ND_QUEUE_TIMEOUT is invalid")
+		logger.Error("S3ND_QUEUE_TIMEOUT is invalid")
+		os.Exit(1)
 	}
 	conf.QueueTimeout = &queueTimeoutDuration
 
 	uploadPartsize, err := k8sresource.ParseQuantity(*uploadPartsizeRaw)
 	if err != nil {
-		log.Fatal("S3ND_UPLOAD_PARTSIZE is invalid")
+		logger.Error("S3ND_UPLOAD_PARTSIZE is invalid")
+		os.Exit(1)
 	}
 	conf.UploadPartsize = &uploadPartsize
 
 	uploadBwlimit, err := k8sresource.ParseQuantity(*uploadBwlimitRaw)
 	if err != nil {
-		log.Fatal("S3ND_UPLOAD_BWLIMIT is invalid")
+		logger.Error("S3ND_UPLOAD_BWLIMIT is invalid")
+		os.Exit(1)
 	}
 	conf.UploadBwlimit = &uploadBwlimit
 
 	uploadWriteBufferSize, err := k8sresource.ParseQuantity(*uploadWriteBufferSizeRaw)
 	if err != nil {
-		log.Fatal("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
+		logger.Error("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
+		os.Exit(1)
 	}
 	conf.UploadWriteBufferSize = &uploadWriteBufferSize
 
-	log.Println("S3ND_HOST:", *conf.Host)
-	log.Println("S3ND_PORT:", *conf.Port)
-	log.Println("S3ND_ENDPOINT_URL:", *conf.EndpointUrl)
-	log.Println("S3ND_UPLOAD_MAX_PARALLEL:", *conf.UploadMaxParallel)
-	log.Println("S3ND_UPLOAD_TIMEOUT:", *conf.UploadTimeout)
-	log.Println("S3ND_QUEUE_TIMEOUT:", *conf.QueueTimeout)
-	log.Println("S3ND_UPLOAD_TRIES:", *conf.UploadTries)
-	log.Println("S3ND_UPLOAD_PARTSIZE:", conf.UploadPartsize.String())
-	log.Println("S3ND_UPLOAD_BWLIMIT:", conf.UploadBwlimit.String())
-	log.Println("S3ND_UPLOAD_WRITE_BUFFER_SIZE:", conf.UploadWriteBufferSize.String())
+	// report the configuration using the name of env vars instead of the internal field names.
+	envVars := map[string]string{
+		"S3ND_HOST":                     *conf.Host,
+		"S3ND_PORT":                     strconv.Itoa(*conf.Port),
+		"S3ND_ENDPOINT_URL":             *conf.EndpointUrl,
+		"S3ND_UPLOAD_MAX_PARALLEL":      strconv.FormatInt(*conf.UploadMaxParallel, 10),
+		"S3ND_UPLOAD_TIMEOUT":           (*conf.UploadTimeout).String(),
+		"S3ND_QUEUE_TIMEOUT":            (*conf.QueueTimeout).String(),
+		"S3ND_UPLOAD_TRIES":             strconv.Itoa(*conf.UploadTries),
+		"S3ND_UPLOAD_PARTSIZE":          conf.UploadPartsize.String(),
+		"S3ND_UPLOAD_BWLIMIT":           conf.UploadBwlimit.String(),
+		"S3ND_UPLOAD_WRITE_BUFFER_SIZE": conf.UploadWriteBufferSize.String(),
+	}
+	logger.Info("service configuration", "conf", envVars)
 
 	return conf
 }
