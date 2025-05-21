@@ -50,6 +50,18 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 
 	var httpClient *awshttp.BuildableClient
 
+	defaultTransportOtptions := func(t *http.Transport) {
+		t.ExpectContinueTimeout = 0
+		t.IdleConnTimeout = 0
+		t.MaxIdleConns = maxConns
+		t.MaxConnsPerHost = maxConns
+		t.MaxIdleConnsPerHost = maxConns
+		t.WriteBufferSize = int(conf.UploadWriteBufferSize.Value())
+		// disable http/2 to prevent muxing over a single tcp connection
+		t.ForceAttemptHTTP2 = false
+		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	}
+
 	if conf.UploadBwlimit.Value() != 0 {
 		dialer := &net.Dialer{
 			Control: func(network, address string, conn syscall.RawConn) error {
@@ -65,29 +77,11 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		}
 
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
-			t.ExpectContinueTimeout = 0
-			t.IdleConnTimeout = 0
-			t.MaxIdleConns = maxConns
-			t.MaxConnsPerHost = maxConns
-			t.MaxIdleConnsPerHost = maxConns
-			t.WriteBufferSize = int(conf.UploadWriteBufferSize.Value())
-			// disable http/2 to prevent muxing over a single tcp connection
-			t.ForceAttemptHTTP2 = false
-			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+			defaultTransportOtptions(t)
 			t.DialContext = dialer.DialContext
 		})
 	} else {
-		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
-			t.ExpectContinueTimeout = 0
-			t.IdleConnTimeout = 0
-			t.MaxIdleConns = maxConns
-			t.MaxConnsPerHost = maxConns
-			t.MaxIdleConnsPerHost = maxConns
-			t.WriteBufferSize = int(conf.UploadWriteBufferSize.Value())
-			// disable http/2 to prevent muxing over a single tcp connection
-			t.ForceAttemptHTTP2 = false
-			t.TLSClientConfig.NextProtos = []string{"http/1.1"}
-		})
+		httpClient = awshttp.NewBuildableClient().WithTransportOptions(defaultTransportOtptions)
 	}
 
 	awsCfg, err := config.LoadDefaultConfig(
