@@ -1,11 +1,12 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.3-alpine AS builder
 
 RUN apk --update --no-cache add \
     binutils \
+    make \
     && rm -rf /root/.cache
 WORKDIR /go/src/github.com/lsst-dm/s3nd
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" -o s3nd && strip s3nd
+RUN CGO_ENABLED=0 make && strip s3nd
 
 FROM alpine:3
 WORKDIR /root/
