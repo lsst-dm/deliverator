@@ -1,2 +1,7 @@
+VERSION=$(shell git describe --tags --dirty --always)
+
+LDFLAGS += -extldflags '-static'
+LDFLAGS += -X github.com/lsst-dm/s3nd/version.Version=$(VERSION)
+
 all:
-	CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" -o s3nd
+	CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o s3nd

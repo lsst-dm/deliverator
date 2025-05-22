@@ -9,9 +9,12 @@ import (
 
 	"github.com/lsst-dm/s3nd/conf"
 	"github.com/lsst-dm/s3nd/handler"
+	"github.com/lsst-dm/s3nd/version"
 )
 
 func main() {
+	log.Println("Starting s3nd version", version.Version)
+
 	conf := conf.NewConf()
 
 	handler := handler.NewHandler(&conf)
