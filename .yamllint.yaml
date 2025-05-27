@@ -15,3 +15,6 @@ rules:
     require-starting-space: false
   document-start:
     level: "error"
+
+ignore:
+  - docs/swagger.yaml  # machine generated

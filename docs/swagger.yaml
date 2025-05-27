@@ -1,0 +1,163 @@
+definitions:
+  requestStatus200:
+    properties:
+      code:
+        example: 200
+        type: integer
+      msg:
+        example: upload succeeded
+        type: string
+      task:
+        $ref: '#/definitions/task'
+    type: object
+  requestStatus400:
+    properties:
+      code:
+        example: 400
+        type: integer
+      msg:
+        example: 'error parsing request: missing field: uri'
+        type: string
+      task:
+        properties:
+          duration:
+            example: 37.921µs
+            type: string
+          file:
+            example: /path/to/file.txt
+            type: string
+          id:
+            format: uuid
+            type: string
+        type: object
+    type: object
+  requestStatus500:
+    properties:
+      code:
+        example: 500
+        type: integer
+      msg:
+        example: 'upload attempt 5/5 timeout: operation error S3: PutObject, context
+          deadline exceeded'
+        type: string
+      task:
+        properties:
+          attempts:
+            example: 5
+            type: integer
+          duration:
+            example: 37.921µs
+            type: string
+          file:
+            example: /path/to/file.txt
+            type: string
+          id:
+            format: uuid
+            type: string
+          uri:
+            example: s3://my-bucket/my-key
+            type: string
+        type: object
+    type: object
+  requestStatus504:
+    properties:
+      code:
+        example: 504
+        type: integer
+      msg:
+        example: 'upload queue timeout: context deadline exceeded'
+        type: string
+      task:
+        properties:
+          duration:
+            example: 56.115µs
+            type: string
+          file:
+            example: /path/to/file.txt
+            type: string
+          id:
+            format: uuid
+            type: string
+          uri:
+            example: s3://my-bucket/my-key
+            type: string
+        type: object
+    type: object
+  task:
+    properties:
+      attempts:
+        example: 1
+        type: integer
+      duration:
+        example: 21.916462ms
+        type: string
+      file:
+        example: /path/to/file.txt
+        type: string
+      id:
+        format: uuid
+        type: string
+      uri:
+        example: s3://my-bucket/my-key
+        type: string
+    type: object
+info:
+  contact:
+    name: Support
+    url: https://github.com/lsst-dm/s3nd
+  license:
+    name: GPL-3.0
+    url: https://www.gnu.org/licenses/gpl-3.0.en.html
+  title: s3nd|The Deliverator API
+  version: 0.0.0
+paths:
+  /:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      parameters:
+      - description: Destination S3 URI
+        in: formData
+        name: uri
+        required: true
+        type: string
+      - description: path to file to upload
+        in: formData
+        name: file
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/requestStatus200'
+        "400":
+          description: Bad Request
+          headers:
+            X-Error:
+              description: error message
+              type: string
+          schema:
+            $ref: '#/definitions/requestStatus400'
+        "500":
+          description: Internal Server Error
+          headers:
+            X-Error:
+              description: error message
+              type: string
+          schema:
+            $ref: '#/definitions/requestStatus500'
+        "504":
+          description: Gateway Timeout
+          headers:
+            X-Error:
+              description: error message
+              type: string
+          schema:
+            $ref: '#/definitions/requestStatus504'
+      summary: upload file to S3
+      tags:
+      - uploads
+swagger: "2.0"

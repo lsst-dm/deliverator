@@ -42,16 +42,16 @@ type S3ndHandler struct {
 }
 
 type uploadTask struct {
-	Id        uuid.UUID   `json:"id"`
-	Uri       *requestURL `json:"uri,omitempty"`
+	Id        uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+	Uri       *requestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
 	Bucket    *string     `json:"-"`
 	Key       *string     `json:"-"`
-	File      *string     `json:"file,omitempty"`
+	File      *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
 	StartTime time.Time   `json:"-"`
 	EndTime   time.Time   `json:"-"`
-	Duration  string      `json:"duration,omitempty"`
-	Attempts  int         `json:"attempts,omitzero"`
-}
+	Duration  string      `json:"duration,omitempty" example:"21.916462ms"`
+	Attempts  int         `json:"attempts,omitzero" example:"1"`
+} //@name task
 
 func newUploadRequest(startTime time.Time) *uploadTask {
 	return &uploadTask{
@@ -72,10 +72,53 @@ func (u requestURL) MarshalText() ([]byte, error) {
 }
 
 type requestStatus struct {
-	Code int         `json:"code"`
-	Msg  string      `json:"msg,omitempty"`
+	Code int         `json:"code" example:"200"`
+	Msg  string      `json:"msg,omitempty" example:"upload succeeded"`
 	Task *uploadTask `json:"task,omitempty"`
-}
+} //@name requestStatus200
+
+// requestStatusSwag400 is used only for Swagger documentation
+//
+//nolint:unused
+type requestStatusSwag400 struct {
+	requestStatus
+	Code int    `json:"code" example:"400"`
+	Msg  string `json:"msg,omitempty" example:"error parsing request: missing field: uri"`
+	Task *struct {
+		Id       uuid.UUID `json:"id" swaggertype:"string" format:"uuid"`
+		File     *string   `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+		Duration string    `json:"duration,omitempty" example:"37.921µs"`
+	} `json:"task,omitempty"`
+} //@name requestStatus400
+
+// requestStatusSwag500 is used only for Swagger documentation
+//
+//nolint:unused
+type requestStatusSwag500 struct {
+	requestStatus
+	Code int    `json:"code" example:"500"`
+	Msg  string `json:"msg,omitempty" example:"upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded"`
+	Task *struct {
+		uploadTask
+		Duration string `json:"duration,omitempty" example:"37.921µs"`
+		Attempts int    `json:"attempts,omitzero" example:"5"`
+	} `json:"task,omitempty"`
+} //@name requestStatus500
+
+// requestStatusSwag504 is used only for Swagger documentation
+//
+//nolint:unused
+type requestStatusSwag504 struct {
+	requestStatus
+	Code int    `json:"code" example:"504"`
+	Msg  string `json:"msg,omitempty" example:"upload queue timeout: context deadline exceeded"`
+	Task *struct {
+		Id       uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+		Uri      *requestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+		File     *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+		Duration string      `json:"duration,omitempty" example:"56.115µs"`
+	} `json:"task,omitempty"`
+} //@name requestStatus504
 
 func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 	handler := &S3ndHandler{
@@ -149,6 +192,18 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 	return handler
 }
 
+// @Summary      upload file to S3
+// @Tags         uploads
+// @Accept       x-www-form-urlencoded
+// @Produce      json
+// @Param        uri  formData  string true  "Destination S3 URI"
+// @Param        file formData  string true  "path to file to upload"
+// @Success      200  {object}  requestStatus
+// @Failure      400  {object}  requestStatusSwag400
+// @Failure      500  {object}  requestStatusSwag500
+// @Failure      504  {object}  requestStatusSwag504
+// @Router       / [post]
+// @Header       400,500,504 {string} X-Error "error message"
 func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := h.doServeHTTP(r)
 	if status.Code == http.StatusOK {

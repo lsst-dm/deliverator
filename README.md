@@ -72,6 +72,8 @@ API documentation is avaiabile from a running `s3nd` instance in `html` format f
 
 ## Example Status Responses
 
+[📘 API Documentation](docs/swagger.md)
+
 ### Successful Upload
 
 ```console
