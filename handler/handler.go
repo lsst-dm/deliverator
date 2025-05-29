@@ -202,7 +202,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 // @Failure      400  {object}  requestStatusSwag400
 // @Failure      500  {object}  requestStatusSwag500
 // @Failure      504  {object}  requestStatusSwag504
-// @Router       / [post]
+// @Router       /upload [post]
 // @Header       400,500,504 {string} X-Error "error message"
 func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := h.doServeHTTP(r)

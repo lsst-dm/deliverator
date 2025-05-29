@@ -45,7 +45,7 @@ func main() {
 	r.Get("/swagger/*", httpSwagger.Handler(
 		httpSwagger.URL("http://localhost:15555/swagger/doc.json"), // The url pointing to API definition
 	))
-	r.Handle("/", handler)
+	r.Handle("/upload", handler)
 
 	addr := fmt.Sprintf("%s:%d", *conf.Host, *conf.Port)
 	logger.Info("listening", "address", addr)

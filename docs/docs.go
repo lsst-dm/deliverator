@@ -22,7 +22,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/": {
+        "/upload": {
             "post": {
                 "consumes": [
                     "application/x-www-form-urlencoded"

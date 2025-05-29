@@ -170,7 +170,7 @@ jobs:
       - name: send a file
         run: |
           touch foo1
-          curl -vvv --fail-with-body -d file=$(pwd)/foo1 -d "uri=s3://test1/foo1" http://localhost:15555
+          curl -vvv --fail-with-body -d file=$(pwd)/foo1 -d "uri=s3://test1/foo1" http://localhost:15555/upload
 
   gh-release:
     name: Create GitHub Release
