@@ -41,7 +41,7 @@ type S3ndHandler struct {
 	parallelUploads *semaphore.Semaphore
 }
 
-type uploadTask struct {
+type UploadTask struct {
 	Id        uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
 	Uri       *requestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
 	Bucket    *string     `json:"-"`
@@ -53,14 +53,14 @@ type uploadTask struct {
 	Attempts  int         `json:"attempts,omitzero" example:"1"`
 } //@name task
 
-func newUploadRequest(startTime time.Time) *uploadTask {
-	return &uploadTask{
+func NewUploadTask(startTime time.Time) *UploadTask {
+	return &UploadTask{
 		Id:        uuid.New(),
 		StartTime: startTime,
 	}
 }
 
-func (t *uploadTask) stop() {
+func (t *UploadTask) Stop() {
 	t.EndTime = time.Now()
 	t.Duration = t.EndTime.Sub(t.StartTime).String()
 }
@@ -74,7 +74,7 @@ func (u requestURL) MarshalText() ([]byte, error) {
 type requestStatus struct {
 	Code int         `json:"code" example:"200"`
 	Msg  string      `json:"msg,omitempty" example:"upload succeeded"`
-	Task *uploadTask `json:"task,omitempty"`
+	Task *UploadTask `json:"task,omitempty"`
 } //@name requestStatus200
 
 // requestStatusSwag400 is used only for Swagger documentation
@@ -99,7 +99,7 @@ type requestStatusSwag500 struct {
 	Code int    `json:"code" example:"500"`
 	Msg  string `json:"msg,omitempty" example:"upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded"`
 	Task *struct {
-		uploadTask
+		UploadTask
 		Duration string `json:"duration,omitempty" example:"37.921µs"`
 		Attempts int    `json:"attempts,omitzero" example:"5"`
 	} `json:"task,omitempty"`
@@ -228,11 +228,11 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 	// create starting timestamp as early as possible
-	task := newUploadRequest(time.Now())
+	task := NewUploadTask(time.Now())
 
 	err := h.parseRequest(task, r)
 	if err != nil {
-		task.stop()
+		task.Stop()
 		return requestStatus{
 			Code: http.StatusBadRequest,
 			Msg:  errors.Wrapf(err, "error parsing request").Error(),
@@ -249,7 +249,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 	semaCtx, cancel := context.WithTimeout(r.Context(), *h.conf.QueueTimeout)
 	defer cancel()
 	if err := h.parallelUploads.Acquire(semaCtx); err != nil {
-		task.stop()
+		task.Stop()
 		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.Wrap(err, "upload queue timeout")
 		} else {
@@ -269,7 +269,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 	)
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
-		task.stop()
+		task.Stop()
 		return requestStatus{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),
@@ -277,7 +277,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 		}
 	}
 
-	task.stop()
+	task.Stop()
 
 	return requestStatus{
 		Code: http.StatusOK,
@@ -286,7 +286,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 	}
 }
 
-func (h *S3ndHandler) parseRequest(task *uploadTask, r *http.Request) error {
+func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	{
 		file := r.PostFormValue("file")
 		if file == "" {
@@ -330,7 +330,7 @@ func (h *S3ndHandler) parseRequest(task *uploadTask, r *http.Request) error {
 	return nil
 }
 
-func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *uploadTask) error {
+func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
 	file, err := os.Open(*task.File)
 	if err != nil {
 		return errors.Wrapf(err, "Could not open file %v to upload", *task.File)
