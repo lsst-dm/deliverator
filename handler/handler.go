@@ -43,7 +43,7 @@ type S3ndHandler struct {
 
 type UploadTask struct {
 	Id        uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-	Uri       *requestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+	Uri       *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
 	Bucket    *string     `json:"-"`
 	Key       *string     `json:"-"`
 	File      *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
@@ -65,13 +65,13 @@ func (t *UploadTask) Stop() {
 	t.Duration = t.EndTime.Sub(t.StartTime).String()
 }
 
-type requestURL struct{ url.URL }
+type RequestURL struct{ url.URL }
 
-func (u requestURL) MarshalText() ([]byte, error) {
+func (u RequestURL) MarshalText() ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
-type requestStatus struct {
+type RequestStatus struct {
 	Code int         `json:"code" example:"200"`
 	Msg  string      `json:"msg,omitempty" example:"upload succeeded"`
 	Task *UploadTask `json:"task,omitempty"`
@@ -81,7 +81,7 @@ type requestStatus struct {
 //
 //nolint:unused
 type requestStatusSwag400 struct {
-	requestStatus
+	RequestStatus
 	Code int    `json:"code" example:"400"`
 	Msg  string `json:"msg,omitempty" example:"error parsing request: missing field: uri"`
 	Task *struct {
@@ -95,7 +95,7 @@ type requestStatusSwag400 struct {
 //
 //nolint:unused
 type requestStatusSwag500 struct {
-	requestStatus
+	RequestStatus
 	Code int    `json:"code" example:"500"`
 	Msg  string `json:"msg,omitempty" example:"upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded"`
 	Task *struct {
@@ -109,12 +109,12 @@ type requestStatusSwag500 struct {
 //
 //nolint:unused
 type requestStatusSwag504 struct {
-	requestStatus
+	RequestStatus
 	Code int    `json:"code" example:"504"`
 	Msg  string `json:"msg,omitempty" example:"upload queue timeout: context deadline exceeded"`
 	Task *struct {
 		Id       uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-		Uri      *requestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+		Uri      *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
 		File     *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
 		Duration string      `json:"duration,omitempty" example:"56.115µs"`
 	} `json:"task,omitempty"`
@@ -198,7 +198,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 // @Produce      json
 // @Param        uri  formData  string true  "Destination S3 URI"
 // @Param        file formData  string true  "path to file to upload"
-// @Success      200  {object}  requestStatus
+// @Success      200  {object}  RequestStatus
 // @Failure      400  {object}  requestStatusSwag400
 // @Failure      500  {object}  requestStatusSwag500
 // @Failure      504  {object}  requestStatusSwag504
@@ -226,14 +226,14 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(status)
 }
 
-func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
+func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	// create starting timestamp as early as possible
 	task := NewUploadTask(time.Now())
 
 	err := h.parseRequest(task, r)
 	if err != nil {
 		task.Stop()
-		return requestStatus{
+		return RequestStatus{
 			Code: http.StatusBadRequest,
 			Msg:  errors.Wrapf(err, "error parsing request").Error(),
 			Task: task,
@@ -255,7 +255,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 		} else {
 			err = errors.Wrap(err, "unable to aquire upload queue semaphore")
 		}
-		return requestStatus{
+		return RequestStatus{
 			Code: http.StatusGatewayTimeout,
 			Msg:  err.Error(),
 			Task: task,
@@ -270,7 +270,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
 		task.Stop()
-		return requestStatus{
+		return RequestStatus{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),
 			Task: task,
@@ -279,7 +279,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) requestStatus {
 
 	task.Stop()
 
-	return requestStatus{
+	return RequestStatus{
 		Code: http.StatusOK,
 		Msg:  "upload succeeded",
 		Task: task,
@@ -322,7 +322,7 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 
 		key := uri.Path[1:] // Remove leading slash
 
-		task.Uri = &requestURL{*uri}
+		task.Uri = &RequestURL{*uri}
 		task.Bucket = &bucket
 		task.Key = &key
 	}
