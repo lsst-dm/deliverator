@@ -42,15 +42,17 @@ type S3ndHandler struct {
 }
 
 type UploadTask struct {
-	Id        uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-	Uri       *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
-	Bucket    *string     `json:"-"`
-	Key       *string     `json:"-"`
-	File      *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
-	StartTime time.Time   `json:"-"`
-	EndTime   time.Time   `json:"-"`
-	Duration  string      `json:"duration,omitempty" example:"21.916462ms"`
-	Attempts  int         `json:"attempts,omitzero" example:"1"`
+	Id           uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+	Uri          *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+	Bucket       *string     `json:"-"`
+	Key          *string     `json:"-"`
+	File         *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+	StartTime    time.Time   `json:"-"`
+	EndTime      time.Time   `json:"-"`
+	Duration     string      `json:"duration,omitempty" example:"21.916462ms"`
+	Attempts     int         `json:"attempts,omitzero" example:"1"`
+	SizeBytes    int64       `json:"size_bytes,omitzero" example:"1000"`
+	TransferRate string      `json:"transfer_rate,omitempty" example:"1000B/s"`
 } //@name task
 
 func NewUploadTask(startTime time.Time) *UploadTask {
@@ -62,7 +64,9 @@ func NewUploadTask(startTime time.Time) *UploadTask {
 
 func (t *UploadTask) Stop() {
 	t.EndTime = time.Now()
-	t.Duration = t.EndTime.Sub(t.StartTime).String()
+	duration := t.EndTime.Sub(t.StartTime)
+	t.Duration = duration.String()
+	t.TransferRate = fmt.Sprintf("%.3fMbit/s", float64(t.SizeBytes*8)/duration.Seconds()/(1<<20))
 }
 
 type RequestURL struct{ url.URL }
@@ -331,6 +335,13 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 }
 
 func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
+	// obtain file size to compute the transfer rate later
+	fStat, err := os.Stat(*task.File)
+	if err != nil {
+		return errors.Wrapf(err, "could not stat file %v", *task.File)
+	}
+	task.SizeBytes = fStat.Size()
+
 	file, err := os.Open(*task.File)
 	if err != nil {
 		return errors.Wrapf(err, "Could not open file %v to upload", *task.File)

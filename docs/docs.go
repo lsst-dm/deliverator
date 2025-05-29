@@ -174,6 +174,14 @@ const docTemplate = `{
                             "type": "string",
                             "format": "uuid"
                         },
+                        "size_bytes": {
+                            "type": "integer",
+                            "example": 1000
+                        },
+                        "transfer_rate": {
+                            "type": "string",
+                            "example": "1000B/s"
+                        },
                         "uri": {
                             "type": "string",
                             "example": "s3://my-bucket/my-key"
@@ -234,6 +242,14 @@ const docTemplate = `{
                 "id": {
                     "type": "string",
                     "format": "uuid"
+                },
+                "size_bytes": {
+                    "type": "integer",
+                    "example": 1000
+                },
+                "transfer_rate": {
+                    "type": "string",
+                    "example": "1000B/s"
                 },
                 "uri": {
                     "type": "string",

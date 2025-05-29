@@ -54,6 +54,12 @@ definitions:
           id:
             format: uuid
             type: string
+          size_bytes:
+            example: 1000
+            type: integer
+          transfer_rate:
+            example: 1000B/s
+            type: string
           uri:
             example: s3://my-bucket/my-key
             type: string
@@ -96,6 +102,12 @@ definitions:
         type: string
       id:
         format: uuid
+        type: string
+      size_bytes:
+        example: 1000
+        type: integer
+      transfer_rate:
+        example: 1000B/s
         type: string
       uri:
         example: s3://my-bucket/my-key
