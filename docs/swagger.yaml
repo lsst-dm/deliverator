@@ -60,6 +60,9 @@ definitions:
           transfer_rate:
             example: 1000B/s
             type: string
+          upload_parts:
+            example: 1
+            type: integer
           uri:
             example: s3://my-bucket/my-key
             type: string
@@ -109,6 +112,9 @@ definitions:
       transfer_rate:
         example: 1000B/s
         type: string
+      upload_parts:
+        example: 1
+        type: integer
       uri:
         example: s3://my-bucket/my-key
         type: string

@@ -10,10 +10,10 @@ require (
 	github.com/aws/smithy-go v1.22.0
 	github.com/go-chi/chi v1.5.5
 	github.com/google/uuid v1.6.0
-	github.com/hyperledger/fabric v2.1.1+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.4
+	golang.org/x/sync v0.14.0
 	golang.org/x/sys v0.33.0
 	k8s.io/apimachinery v0.31.2
 )
@@ -42,10 +42,8 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/onsi/gomega v1.35.1 // indirect
 	github.com/swaggo/files/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

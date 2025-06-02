@@ -23,8 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric/common/semaphore"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,7 +38,7 @@ type S3ndHandler struct {
 	awsConfig       *aws.Config
 	s3Client        *s3.Client
 	uploader        *manager.Uploader
-	parallelUploads *semaphore.Semaphore
+	parallelUploads *semaphore.Weighted
 }
 
 type UploadTask struct {
@@ -52,6 +52,7 @@ type UploadTask struct {
 	Duration     string      `json:"duration,omitempty" example:"21.916462ms"`
 	Attempts     int         `json:"attempts,omitzero" example:"1"`
 	SizeBytes    int64       `json:"size_bytes,omitzero" example:"1000"`
+	UploadParts  int64       `json:"upload_parts,omitempty" example:"1"`
 	TransferRate string      `json:"transfer_rate,omitempty" example:"1000B/s"`
 } //@name task
 
@@ -190,8 +191,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		u.PartSize = conf.UploadPartsize.Value()
 	})
 
-	sema := semaphore.New(int(*conf.UploadMaxParallel))
-	handler.parallelUploads = &sema
+	handler.parallelUploads = semaphore.NewWeighted(*conf.UploadMaxParallel)
 
 	return handler
 }
@@ -252,7 +252,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	// limit the number of parallel uploads
 	semaCtx, cancel := context.WithTimeout(r.Context(), *h.conf.QueueTimeout)
 	defer cancel()
-	if err := h.parallelUploads.Acquire(semaCtx); err != nil {
+	if err := h.parallelUploads.Acquire(semaCtx, task.UploadParts); err != nil {
 		task.Stop()
 		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.Wrap(err, "upload queue timeout")
@@ -265,7 +265,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 			Task: task,
 		}
 	}
-	defer h.parallelUploads.Release()
+	defer h.parallelUploads.Release(task.UploadParts)
 
 	logger.Info(
 		"upload starting",
@@ -331,17 +331,19 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 		task.Key = &key
 	}
 
-	return nil
-}
-
-func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
-	// obtain file size to compute the transfer rate later
+	// obtain file size to determine the number of upload parts and to compute
+	// the transfer rate later
 	fStat, err := os.Stat(*task.File)
 	if err != nil {
 		return errors.Wrapf(err, "could not stat file %v", *task.File)
 	}
 	task.SizeBytes = fStat.Size()
+	task.UploadParts = divCeil(task.SizeBytes, h.conf.UploadPartsize.Value())
 
+	return nil
+}
+
+func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
 	file, err := os.Open(*task.File)
 	if err != nil {
 		return errors.Wrapf(err, "Could not open file %v to upload", *task.File)
@@ -393,4 +395,11 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 	}
 
 	return nil
+}
+
+func divCeil(a, b int64) int64 {
+	if b == 0 {
+		panic("division by zero")
+	}
+	return (a + b - 1) / b // rounds up
 }
