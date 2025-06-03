@@ -35,16 +35,16 @@ Support  https://github.com/lsst-dm/s3nd
 
 | Method  | URI     | Name   | Summary |
 |---------|---------|--------|---------|
-| POST | / | [post](#post) | upload file to S3 |
+| POST | /upload | [post upload](#post-upload) | upload file to S3 |
   
 
 
 ## Paths
 
-### <span id="post"></span> upload file to S3 (*Post*)
+### <span id="post-upload"></span> upload file to S3 (*PostUpload*)
 
 ```
-POST /
+POST /upload
 ```
 
 #### Consumes
@@ -63,27 +63,27 @@ POST /
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#post-200) | OK | OK |  | [schema](#post-200-schema) |
-| [400](#post-400) | Bad Request | Bad Request | ✓ | [schema](#post-400-schema) |
-| [500](#post-500) | Internal Server Error | Internal Server Error | ✓ | [schema](#post-500-schema) |
-| [504](#post-504) | Gateway Timeout | Gateway Timeout | ✓ | [schema](#post-504-schema) |
+| [200](#post-upload-200) | OK | OK |  | [schema](#post-upload-200-schema) |
+| [400](#post-upload-400) | Bad Request | Bad Request | ✓ | [schema](#post-upload-400-schema) |
+| [500](#post-upload-500) | Internal Server Error | Internal Server Error | ✓ | [schema](#post-upload-500-schema) |
+| [504](#post-upload-504) | Gateway Timeout | Gateway Timeout | ✓ | [schema](#post-upload-504-schema) |
 
 #### Responses
 
 
-##### <span id="post-200"></span> 200 - OK
+##### <span id="post-upload-200"></span> 200 - OK
 Status: OK
 
-###### <span id="post-200-schema"></span> Schema
+###### <span id="post-upload-200-schema"></span> Schema
    
   
 
 [RequestStatus200](#request-status200)
 
-##### <span id="post-400"></span> 400 - Bad Request
+##### <span id="post-upload-400"></span> 400 - Bad Request
 Status: Bad Request
 
-###### <span id="post-400-schema"></span> Schema
+###### <span id="post-upload-400-schema"></span> Schema
    
   
 
@@ -95,10 +95,10 @@ Status: Bad Request
 |------|------|---------|-----------|---------|-------------|
 | X-Error | string | `string` |  |  | error message |
 
-##### <span id="post-500"></span> 500 - Internal Server Error
+##### <span id="post-upload-500"></span> 500 - Internal Server Error
 Status: Internal Server Error
 
-###### <span id="post-500-schema"></span> Schema
+###### <span id="post-upload-500-schema"></span> Schema
    
   
 
@@ -110,10 +110,10 @@ Status: Internal Server Error
 |------|------|---------|-----------|---------|-------------|
 | X-Error | string | `string` |  |  | error message |
 
-##### <span id="post-504"></span> 504 - Gateway Timeout
+##### <span id="post-upload-504"></span> 504 - Gateway Timeout
 Status: Gateway Timeout
 
-###### <span id="post-504-schema"></span> Schema
+###### <span id="post-upload-504-schema"></span> Schema
    
   
 
@@ -214,6 +214,9 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `37.921µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
+| size_bytes | integer| `int64` |  | |  | `1000` |
+| transfer_rate | string| `string` |  | |  | `1000B/s` |
+| upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
 
@@ -270,6 +273,9 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `21.916462ms` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
+| size_bytes | integer| `int64` |  | |  | `1000` |
+| transfer_rate | string| `string` |  | |  | `1000B/s` |
+| upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
 

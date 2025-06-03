@@ -182,6 +182,10 @@ const docTemplate = `{
                             "type": "string",
                             "example": "1000B/s"
                         },
+                        "upload_parts": {
+                            "type": "integer",
+                            "example": 1
+                        },
                         "uri": {
                             "type": "string",
                             "example": "s3://my-bucket/my-key"
@@ -250,6 +254,10 @@ const docTemplate = `{
                 "transfer_rate": {
                     "type": "string",
                     "example": "1000B/s"
+                },
+                "upload_parts": {
+                    "type": "integer",
+                    "example": 1
                 },
                 "uri": {
                     "type": "string",
