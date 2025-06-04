@@ -23,8 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	"github.com/google/uuid"
+	"github.com/marusama/semaphore/v2"
 	"github.com/pkg/errors"
-	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,7 +38,7 @@ type S3ndHandler struct {
 	awsConfig       *aws.Config
 	s3Client        *s3.Client
 	uploader        *manager.Uploader
-	parallelUploads *semaphore.Weighted
+	parallelUploads semaphore.Semaphore
 }
 
 type UploadTask struct {
@@ -198,7 +198,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		u.PartSize = conf.UploadPartsize.Value()
 	})
 
-	handler.parallelUploads = semaphore.NewWeighted(*conf.UploadMaxParallel)
+	handler.parallelUploads = semaphore.New(int(*conf.UploadMaxParallel))
 
 	return handler
 }
@@ -259,7 +259,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	// limit the number of parallel uploads
 	semaCtx, cancel := context.WithTimeout(r.Context(), *h.conf.QueueTimeout)
 	defer cancel()
-	if err := h.parallelUploads.Acquire(semaCtx, task.UploadParts); err != nil {
+	if err := h.parallelUploads.Acquire(semaCtx, int(task.UploadParts)); err != nil {
 		task.StopNoUpload()
 		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.Wrap(err, "upload queue timeout")
@@ -272,7 +272,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 			Task: task,
 		}
 	}
-	defer h.parallelUploads.Release(task.UploadParts)
+	defer h.parallelUploads.Release(int(task.UploadParts))
 
 	logger.Info(
 		"upload starting",
