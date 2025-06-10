@@ -140,7 +140,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		conf: conf,
 	}
 
-	maxConns := int(*conf.UploadMaxParallel * 5) // allow for multipart upload creation
+	maxConns := int(*conf.UploadMaxParallel)
 
 	var httpClient *awshttp.BuildableClient
 
