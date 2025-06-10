@@ -95,6 +95,25 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/version": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "version"
+                ],
+                "summary": "report service version and configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/versionInfo"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -262,6 +281,21 @@ const docTemplate = `{
                 "uri": {
                     "type": "string",
                     "example": "s3://my-bucket/my-key"
+                }
+            }
+        },
+        "versionInfo": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         }
