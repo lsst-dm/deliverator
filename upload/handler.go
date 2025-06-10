@@ -345,7 +345,8 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 		return errors.Wrapf(err, "could not stat file %v", *task.File)
 	}
 	task.SizeBytes = fStat.Size()
-	task.UploadParts = divCeil(task.SizeBytes, h.conf.UploadPartsize.Value())
+	// if the file is empty, we still need to upload it, so set the part size to 1
+	task.UploadParts = max(divCeil(task.SizeBytes, h.conf.UploadPartsize.Value()), 1)
 
 	return nil
 }
