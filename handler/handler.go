@@ -190,8 +190,6 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 	})
 
 	handler.uploader = manager.NewUploader(handler.s3Client, func(u *manager.Uploader) {
-		u.Concurrency = 1000
-		u.MaxUploadParts = 1000
 		u.PartSize = conf.UploadPartsize.Value()
 	})
 
@@ -367,6 +365,8 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 			Bucket: aws.String(*task.Bucket),
 			Key:    aws.String(*task.Key),
 			Body:   file,
+		}, func(u *manager.Uploader) {
+			u.Concurrency = int(task.UploadParts) // 1 go routine per upload part
 		})
 		if err != nil {
 			var apiErr smithy.APIError
