@@ -119,6 +119,16 @@ definitions:
         example: s3://my-bucket/my-key
         type: string
     type: object
+  versionInfo:
+    properties:
+      config:
+        additionalProperties:
+          type: string
+        type: object
+      version:
+        example: 0.0.0
+        type: string
+    type: object
 info:
   contact:
     name: Support
@@ -178,4 +188,16 @@ paths:
       summary: upload file to S3
       tags:
       - uploads
+  /version:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/versionInfo'
+      summary: report service version and configuration
+      tags:
+      - version
 swagger: "2.0"

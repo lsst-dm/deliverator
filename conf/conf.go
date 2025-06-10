@@ -25,6 +25,22 @@ type S3ndConf struct {
 	UploadWriteBufferSize *k8sresource.Quantity
 }
 
+func (conf *S3ndConf) ToMap() map[string]string {
+	// report the configuration using the name of env vars instead of the internal field names.
+	return map[string]string{
+		"S3ND_HOST":                     *conf.Host,
+		"S3ND_PORT":                     strconv.Itoa(*conf.Port),
+		"S3ND_ENDPOINT_URL":             *conf.EndpointUrl,
+		"S3ND_UPLOAD_MAX_PARALLEL":      strconv.FormatInt(*conf.UploadMaxParallel, 10),
+		"S3ND_UPLOAD_TIMEOUT":           (*conf.UploadTimeout).String(),
+		"S3ND_QUEUE_TIMEOUT":            (*conf.QueueTimeout).String(),
+		"S3ND_UPLOAD_TRIES":             strconv.Itoa(*conf.UploadTries),
+		"S3ND_UPLOAD_PARTSIZE":          conf.UploadPartsize.String(),
+		"S3ND_UPLOAD_BWLIMIT":           conf.UploadBwlimit.String(),
+		"S3ND_UPLOAD_WRITE_BUFFER_SIZE": conf.UploadWriteBufferSize.String(),
+	}
+}
+
 // Parse the environment variables and flags. If a flag is not set, the
 // environment variable is used. Errors are fatal.
 func NewConf() S3ndConf {
@@ -131,20 +147,7 @@ func NewConf() S3ndConf {
 	}
 	conf.UploadWriteBufferSize = &uploadWriteBufferSize
 
-	// report the configuration using the name of env vars instead of the internal field names.
-	envVars := map[string]string{
-		"S3ND_HOST":                     *conf.Host,
-		"S3ND_PORT":                     strconv.Itoa(*conf.Port),
-		"S3ND_ENDPOINT_URL":             *conf.EndpointUrl,
-		"S3ND_UPLOAD_MAX_PARALLEL":      strconv.FormatInt(*conf.UploadMaxParallel, 10),
-		"S3ND_UPLOAD_TIMEOUT":           (*conf.UploadTimeout).String(),
-		"S3ND_QUEUE_TIMEOUT":            (*conf.QueueTimeout).String(),
-		"S3ND_UPLOAD_TRIES":             strconv.Itoa(*conf.UploadTries),
-		"S3ND_UPLOAD_PARTSIZE":          conf.UploadPartsize.String(),
-		"S3ND_UPLOAD_BWLIMIT":           conf.UploadBwlimit.String(),
-		"S3ND_UPLOAD_WRITE_BUFFER_SIZE": conf.UploadWriteBufferSize.String(),
-	}
-	logger.Info("service configuration", "conf", envVars)
+	logger.Info("service configuration", "conf", conf.ToMap())
 
 	return conf
 }

@@ -39,7 +39,41 @@ Support  https://github.com/lsst-dm/s3nd
   
 
 
+###  version
+
+| Method  | URI     | Name   | Summary |
+|---------|---------|--------|---------|
+| GET | /version | [get version](#get-version) | report service version and configuration |
+  
+
+
 ## Paths
+
+### <span id="get-version"></span> report service version and configuration (*GetVersion*)
+
+```
+GET /version
+```
+
+#### Produces
+  * application/json
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-version-200) | OK | OK |  | [schema](#get-version-200-schema) |
+
+#### Responses
+
+
+##### <span id="get-version-200"></span> 200 - OK
+Status: OK
+
+###### <span id="get-version-200-schema"></span> Schema
+   
+  
+
+[VersionInfo](#version-info)
 
 ### <span id="post-upload"></span> upload file to S3 (*PostUpload*)
 
@@ -277,5 +311,21 @@ Status: Gateway Timeout
 | transfer_rate | string| `string` |  | |  | `1000B/s` |
 | upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
+
+
+
+### <span id="version-info"></span> versionInfo
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| config | map of string| `map[string]string` |  | |  |  |
+| version | string| `string` |  | |  | `0.0.0` |
 
 
