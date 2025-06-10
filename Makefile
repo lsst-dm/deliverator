@@ -7,5 +7,5 @@ all:
 	swag init --pd
 	CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o s3nd
 
-docs:
+swagger:
 	swagger generate markdown -f docs/swagger.yaml --output docs/swagger.md
