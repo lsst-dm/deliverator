@@ -161,7 +161,7 @@ jobs:
         env:
           S3ND_ENDPOINT_URL: http://localhost:9000
           AWS_REGION: foo
-        run: docker run -d --network host -v $(pwd):$(pwd) -e S3ND_ENDPOINT_URL -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY ${{ needs.oci_image.outputs.tag }}
+        run: docker run -d --name s3nd --network host -v $(pwd):$(pwd) -e S3ND_ENDPOINT_URL -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY ${{ needs.oci_image.outputs.tag }}
 
       - name: create test1 bucket
         run: |
@@ -171,6 +171,12 @@ jobs:
         run: |
           touch foo1
           curl -vvv --fail-with-body -d file=$(pwd)/foo1 -d "uri=s3://test1/foo1" http://localhost:15555/upload
+
+      - name: Dump s3nd container log on failure
+        if: failure()
+        run: |
+          echo "Job failed, dumping s3nd container log..."
+          docker logs s3nd || echo "Failed to get s3nd container log"
 
   gh-release:
     name: Create GitHub Release
