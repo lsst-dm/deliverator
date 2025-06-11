@@ -161,6 +161,22 @@ Status: Gateway Timeout
 
 ## Models
 
+### <span id="version-info"></span> VersionInfo
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| config | map of string| `map[string]string` |  | |  |  |
+| version | string| `string` |  | |  | `0.0.0` |
+
+
+
 ### <span id="request-status200"></span> requestStatus200
 
 
@@ -311,21 +327,5 @@ Status: Gateway Timeout
 | transfer_rate | string| `string` |  | |  | `1000B/s` |
 | upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
-
-
-
-### <span id="version-info"></span> versionInfo
-
-
-  
-
-
-
-**Properties**
-
-| Name | Type | Go type | Required | Default | Description | Example |
-|------|------|---------|:--------:| ------- |-------------|---------|
-| config | map of string| `map[string]string` |  | |  |  |
-| version | string| `string` |  | |  | `0.0.0` |
 
 

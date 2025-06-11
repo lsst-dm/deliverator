@@ -109,7 +109,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/versionInfo"
+                            "$ref": "#/definitions/VersionInfo"
                         }
                     }
                 }
@@ -117,6 +117,21 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "VersionInfo": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "type": "string",
+                    "example": "0.0.0"
+                }
+            }
+        },
         "requestStatus200": {
             "type": "object",
             "properties": {
@@ -281,21 +296,6 @@ const docTemplate = `{
                 "uri": {
                     "type": "string",
                     "example": "s3://my-bucket/my-key"
-                }
-            }
-        },
-        "versionInfo": {
-            "type": "object",
-            "properties": {
-                "config": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "version": {
-                    "type": "string",
-                    "example": "0.0.0"
                 }
             }
         }
