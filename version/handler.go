@@ -11,10 +11,10 @@ type VersionHandler struct {
 	conf *conf.S3ndConf
 }
 
-type versionInfo struct {
+type VersionInfo struct {
 	Version string            `json:"version" example:"0.0.0"`
 	Config  map[string]string `json:"config,omitempty"`
-} // @name versionInfo
+} // @name VersionInfo
 
 func NewHandler(conf *conf.S3ndConf) *VersionHandler {
 	return &VersionHandler{conf: conf}
@@ -23,10 +23,10 @@ func NewHandler(conf *conf.S3ndConf) *VersionHandler {
 // @summary      report service version and configuration
 // @tags         version
 // @produce      json
-// @success      200  {object}  versionInfo
+// @success      200  {object}  VersionInfo
 // @router       /version [get]
 func (h *VersionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	info := &versionInfo{
+	info := &VersionInfo{
 		Version: Version,
 		Config:  h.conf.ToMap(),
 	}
