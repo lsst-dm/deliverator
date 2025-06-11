@@ -35,9 +35,9 @@ func main() {
 	// set the version displayed in the swagger UI.
 	docs.SwaggerInfo.Version = version.Version
 
-	logger.Info("starting s3nd", "version", version.Version)
+	conf := conf.NewConf(version.Version)
 
-	conf := conf.NewConf()
+	logger.Info("starting s3nd", "version", version.Version)
 
 	r := chi.NewRouter()
 	r.Get("/swagger/*", httpSwagger.Handler(
