@@ -2,6 +2,7 @@ package conf
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -43,7 +44,7 @@ func (conf *S3ndConf) ToMap() map[string]string {
 
 // Parse the environment variables and flags. If a flag is not set, the
 // environment variable is used. Errors are fatal.
-func NewConf() S3ndConf {
+func NewConf(version string) S3ndConf {
 	conf := S3ndConf{}
 
 	// start flags
@@ -104,8 +105,15 @@ func NewConf() S3ndConf {
 	}
 	uploadWriteBufferSizeRaw := flag.String("upload-write-buffer-size", defaultUploadWriteBufferSize, "Upload Write Buffer Size (S3ND_UPLOAD_WRITE_BUFFER_SIZE)")
 
+	versionFlag := flag.Bool("version", false, "print version and exit")
+
 	flag.Parse()
 	// end flags
+
+	if *versionFlag {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	if *conf.EndpointUrl == "" {
 		logger.Error("S3ND_ENDPOINT_URL is required")
