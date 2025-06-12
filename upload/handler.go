@@ -285,7 +285,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	h.updatePace()
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
-		task.Stop()
+		task.StopNoUpload()
 		return RequestStatus{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),
