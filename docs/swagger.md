@@ -262,10 +262,12 @@ Status: Gateway Timeout
 |------|------|---------|:--------:| ------- |-------------|---------|
 | attempts | integer| `int64` |  | |  | `5` |
 | duration | string| `string` |  | |  | `37.921µs` |
+| duration_seconds | number| `float64` |  | |  | `0.021` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | size_bytes | integer| `int64` |  | |  | `1000` |
-| transfer_rate | string| `string` |  | |  | `1000B/s` |
+| transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
+| transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
 | upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
@@ -320,11 +322,13 @@ Status: Gateway Timeout
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | attempts | integer| `int64` |  | |  | `1` |
-| duration | string| `string` |  | |  | `21.916462ms` |
+| duration | string| `string` |  | | human friendly | `21.916462ms` |
+| duration_seconds | number| `float64` |  | |  | `0.021` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | size_bytes | integer| `int64` |  | |  | `1000` |
-| transfer_rate | string| `string` |  | |  | `1000B/s` |
+| transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
+| transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
 | upload_parts | integer| `int64` |  | |  | `1` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
