@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-chi/chi"
+	chi "github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 
 	"github.com/lsst-dm/s3nd/conf"
