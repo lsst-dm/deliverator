@@ -200,6 +200,10 @@ const docTemplate = `{
                             "type": "string",
                             "example": "37.921µs"
                         },
+                        "duration_seconds": {
+                            "type": "number",
+                            "example": 0.021
+                        },
                         "file": {
                             "type": "string",
                             "example": "/path/to/file.txt"
@@ -213,8 +217,13 @@ const docTemplate = `{
                             "example": 1000
                         },
                         "transfer_rate": {
+                            "description": "human friendly",
                             "type": "string",
                             "example": "1000B/s"
+                        },
+                        "transfer_rate_mbits": {
+                            "type": "number",
+                            "example": 0.001
                         },
                         "upload_parts": {
                             "type": "integer",
@@ -270,8 +279,13 @@ const docTemplate = `{
                     "example": 1
                 },
                 "duration": {
+                    "description": "human friendly",
                     "type": "string",
                     "example": "21.916462ms"
+                },
+                "duration_seconds": {
+                    "type": "number",
+                    "example": 0.021
                 },
                 "file": {
                     "type": "string",
@@ -286,8 +300,13 @@ const docTemplate = `{
                     "example": 1000
                 },
                 "transfer_rate": {
+                    "description": "human friendly",
                     "type": "string",
                     "example": "1000B/s"
+                },
+                "transfer_rate_mbits": {
+                    "type": "number",
+                    "example": 0.001
                 },
                 "upload_parts": {
                     "type": "integer",

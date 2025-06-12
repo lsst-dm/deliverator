@@ -58,6 +58,9 @@ definitions:
           duration:
             example: 37.921µs
             type: string
+          duration_seconds:
+            example: 0.021
+            type: number
           file:
             example: /path/to/file.txt
             type: string
@@ -68,8 +71,12 @@ definitions:
             example: 1000
             type: integer
           transfer_rate:
+            description: human friendly
             example: 1000B/s
             type: string
+          transfer_rate_mbits:
+            example: 0.001
+            type: number
           upload_parts:
             example: 1
             type: integer
@@ -108,8 +115,12 @@ definitions:
         example: 1
         type: integer
       duration:
+        description: human friendly
         example: 21.916462ms
         type: string
+      duration_seconds:
+        example: 0.021
+        type: number
       file:
         example: /path/to/file.txt
         type: string
@@ -120,8 +131,12 @@ definitions:
         example: 1000
         type: integer
       transfer_rate:
+        description: human friendly
         example: 1000B/s
         type: string
+      transfer_rate_mbits:
+        example: 0.001
+        type: number
       upload_parts:
         example: 1
         type: integer

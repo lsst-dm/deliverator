@@ -45,18 +45,20 @@ type S3ndHandler struct {
 }
 
 type UploadTask struct {
-	Id           uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-	Uri          *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
-	Bucket       *string     `json:"-"`
-	Key          *string     `json:"-"`
-	File         *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
-	StartTime    time.Time   `json:"-"`
-	EndTime      time.Time   `json:"-"`
-	Duration     string      `json:"duration,omitempty" example:"21.916462ms"`
-	Attempts     int         `json:"attempts,omitzero" example:"1"`
-	SizeBytes    int64       `json:"size_bytes,omitzero" example:"1000"`
-	UploadParts  int64       `json:"upload_parts,omitempty" example:"1"`
-	TransferRate string      `json:"transfer_rate,omitempty" example:"1000B/s"`
+	Id                uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+	Uri               *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+	Bucket            *string     `json:"-"`
+	Key               *string     `json:"-"`
+	File              *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+	StartTime         time.Time   `json:"-"`
+	EndTime           time.Time   `json:"-"`
+	Duration          string      `json:"duration,omitempty" example:"21.916462ms"` // human friendly
+	DurationSeconds   float64     `json:"duration_seconds,omitzero" example:"0.021"`
+	Attempts          int         `json:"attempts,omitzero" example:"1"`
+	SizeBytes         int64       `json:"size_bytes" example:"1000"`
+	UploadParts       int64       `json:"upload_parts,omitempty" example:"1"`
+	TransferRate      string      `json:"transfer_rate,omitempty" example:"1000B/s"` // human friendly
+	TransferRateMbits float64     `json:"transfer_rate_mbits,omitzero" example:"0.001"`
 } //@name task
 
 func NewUploadTask(startTime time.Time) *UploadTask {
@@ -71,13 +73,16 @@ func (t *UploadTask) StopNoUpload() {
 	t.Stop()
 	// no transfer rate if we didn't start the upload
 	t.TransferRate = ""
+	t.TransferRateMbits = 0
 }
 
 func (t *UploadTask) Stop() {
 	t.EndTime = time.Now()
 	duration := t.EndTime.Sub(t.StartTime)
+	t.DurationSeconds = duration.Seconds()
 	t.Duration = duration.String()
-	t.TransferRate = fmt.Sprintf("%.3fMbit/s", float64(t.SizeBytes*8)/duration.Seconds()/(1<<20))
+	t.TransferRateMbits = float64(t.SizeBytes*8) / duration.Seconds() / (1 << 20)
+	t.TransferRate = fmt.Sprintf("%.3fMbit/s", t.TransferRateMbits)
 }
 
 type RequestURL struct{ url.URL }
@@ -418,15 +423,21 @@ func (h *S3ndHandler) updatePace() {
 		h.uploadPace = bwLimitBytes / h.parallelUploads.GetCount()
 	}
 
-	logger.Info(
-		"active uploads",
-		"uploads", h.parallelUploads.GetCount(),
-		"pace", fmt.Sprintf("%.3fMbit/s", float64(h.uploadPace*8)/(1<<20)),
-	)
-
 	if h.conf.UploadBwlimit.Value() == 0 {
+		// omit pacing rate logging if there is no upload bandwidth limit configured
+		logger.Info(
+			"active uploads",
+			"uploads", h.parallelUploads.GetCount(),
+		)
 		// noop if there is no upload bandwidth limit configured
 		return
+	} else {
+		paceMbits := float64(h.uploadPace*8) / (1 << 20)
+		logger.Info(
+			"active uploads",
+			"uploads", h.parallelUploads.GetCount(),
+			"pace_mbits", paceMbits,
+		)
 	}
 
 	// there's no need to touch the socket options if there are no active uploads
