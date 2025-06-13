@@ -181,6 +181,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		context.TODO(),
 		config.WithBaseEndpoint(*conf.EndpointUrl),
 		config.WithHTTPClient(httpClient),
+		config.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
 	)
 	if err != nil {
 		logger.Error(err.Error())
