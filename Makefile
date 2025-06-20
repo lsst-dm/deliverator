@@ -4,12 +4,15 @@ LDFLAGS += -extldflags '-static' -w
 LDFLAGS += -X github.com/lsst-dm/s3nd/version.Version=$(VERSION)
 
 .PHONY: all
-all: lint swagger build
+all: lint swag swagger build
 
 .PHONY: build
 build:
-	swag init --pd
 	CGO_ENABLED=0 go build -ldflags "${LDFLAGS}"
+
+.PHONY: swag
+swag:
+	swag init --pd
 
 .PHONY: swagger
 swagger:
