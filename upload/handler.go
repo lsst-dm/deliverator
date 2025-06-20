@@ -91,6 +91,15 @@ func (u RequestURL) MarshalText() ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
+func (u *RequestURL) UnmarshalText(text []byte) error {
+	parsed, err := url.Parse(string(text))
+	if err != nil {
+		return err
+	}
+	u.URL = *parsed
+	return nil
+}
+
 type RequestStatus struct {
 	Code int         `json:"code" example:"200"`
 	Msg  string      `json:"msg,omitempty" example:"upload succeeded"`
