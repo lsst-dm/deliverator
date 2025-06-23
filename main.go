@@ -40,9 +40,7 @@ func main() {
 	logger.Info("starting s3nd", "version", version.Version)
 
 	r := chi.NewRouter()
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("http://localhost:15555/swagger/doc.json"), // The url pointing to API definition
-	))
+	r.Get("/swagger/*", httpSwagger.Handler())
 	r.Handle("/version", version.NewHandler(&conf))
 	r.Handle("/upload", upload.NewHandler(&conf))
 
