@@ -33,7 +33,11 @@ var _ = Describe("POST /upload", func() {
 		_ = f.Sync()
 
 		resp, err := http.PostForm(s3ndUrl.String()+"/upload",
-			url.Values{"file": {f.Name()}, "uri": {"s3://" + s3ndBucket + "/" + testFile}})
+			url.Values{
+				"file": {f.Name()},
+				"uri":  {"s3://" + s3ndBucket + "/" + testFile},
+				"slug": {"banana"},
+			})
 		Expect(err).NotTo(HaveOccurred())
 		defer resp.Body.Close()
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -55,6 +59,7 @@ var _ = Describe("client.Upload", func() {
 	var status *upload.RequestStatus
 	var uri url.URL
 	var file string
+	slug := "banana"
 	testFile := "test2"
 
 	It("returns 200", func() {
@@ -76,7 +81,7 @@ var _ = Describe("client.Upload", func() {
 			Path:   "/" + testFile,
 		}
 
-		status, err = s3nd.Upload(context.Background(), file, uri)
+		status, err = s3nd.Upload(context.Background(), file, uri, slug)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(status.Code).To(Equal(http.StatusOK))
 	})
@@ -112,6 +117,7 @@ var _ = Describe("client.Upload", func() {
 		Expect(task.UploadParts).To(Equal(int64(1)))
 		Expect(task.TransferRate).ToNot(BeEmpty())
 		Expect(task.TransferRateMbits).ToNot(BeZero())
+		Expect(task.Slug).To(Equal(&slug))
 	})
 })
 
@@ -122,6 +128,7 @@ var _ = Describe("client.UploadMulti", func() {
 		"upload_multi2",
 		"upload_multi3",
 	}
+	slug := "garden"
 
 	It("returns 200", func() {
 		uploads := map[string]url.URL{}
@@ -146,7 +153,7 @@ var _ = Describe("client.UploadMulti", func() {
 		s3nd := client.NewClient(s3ndUrl)
 
 		var err error
-		statuses, err = s3nd.UploadMulti(context.TODO(), uploads)
+		statuses, err = s3nd.UploadMulti(context.TODO(), uploads, slug)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -188,6 +195,7 @@ var _ = Describe("client.UploadMulti", func() {
 			Expect(task.UploadParts).To(Equal(int64(1)))
 			Expect(task.TransferRate).ToNot(BeEmpty())
 			Expect(task.TransferRateMbits).ToNot(BeZero())
+			Expect(task.Slug).To(Equal(&slug))
 		}
 	})
 })

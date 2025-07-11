@@ -92,6 +92,7 @@ POST /upload
 | Name | Source | Type | Go type | Separator | Required | Default | Description |
 |------|--------|------|---------|-----------| :------: |---------|-------------|
 | file | `formData` | string | `string` |  | ✓ |  | path to file to upload |
+| slug | `formData` | string | `string` |  |  |  | arbitrary string to include in logs |
 | uri | `formData` | string | `string` |  | ✓ |  | Destination S3 URI |
 
 #### All responses
@@ -227,6 +228,7 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `37.921µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
+| slug | string| `string` |  | | for logging | `foo-bar-baz` |
 
 
 
@@ -266,6 +268,7 @@ Status: Gateway Timeout
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | size_bytes | integer| `int64` |  | |  | `1000` |
+| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
 | transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
 | transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
 | upload_parts | integer| `int64` |  | |  | `1` |
@@ -306,6 +309,7 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `56.115µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
+| slug | string| `string` |  | | for logging | `foo-bar-baz` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
 
@@ -327,6 +331,7 @@ Status: Gateway Timeout
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | size_bytes | integer| `int64` |  | |  | `1000` |
+| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
 | transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
 | transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
 | upload_parts | integer| `int64` |  | |  | `1` |

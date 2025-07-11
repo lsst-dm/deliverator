@@ -39,6 +39,10 @@ definitions:
           id:
             format: uuid
             type: string
+          slug:
+            description: for logging
+            example: Gray Garden Slug
+            type: string
         type: object
     type: object
   requestStatus500:
@@ -70,6 +74,10 @@ definitions:
           size_bytes:
             example: 1000
             type: integer
+          slug:
+            description: for logging
+            example: Gray Garden Slug
+            type: string
           transfer_rate:
             description: human friendly
             example: 1000B/s
@@ -104,6 +112,10 @@ definitions:
           id:
             format: uuid
             type: string
+          slug:
+            description: for logging
+            example: Gray Garden Slug
+            type: string
           uri:
             example: s3://my-bucket/my-key
             type: string
@@ -130,6 +142,10 @@ definitions:
       size_bytes:
         example: 1000
         type: integer
+      slug:
+        description: for logging
+        example: Gray Garden Slug
+        type: string
       transfer_rate:
         description: human friendly
         example: 1000B/s
@@ -168,6 +184,10 @@ paths:
         in: formData
         name: file
         required: true
+        type: string
+      - description: arbitrary string to include in logs
+        in: formData
+        name: slug
         type: string
       produces:
       - application/json

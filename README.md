@@ -48,11 +48,15 @@ There are two mandatory parameters to make a valid request:
     Note that there is no checking if the object already exists.
     If the s3 credentials in use by `s3nd` allow an object to be overwritten, `s3nd` will do so.
     This parameter is required.
+- `slug`
+    The slug param is an informational only string which appears in log messages.
+    The intent is to make it easier to associate related upload requests.
+    This parameter is optional.
 
 Example of submitting a file for transfer with `curl`:
 
 ```bash
-curl -d "file=/tmp/foo" -d "uri=s3://bar/foo" http://localhost:15555/upload
+curl -d "file=/tmp/foo" -d "uri=s3://bar/foo" -d "slug=banana" http://localhost:15555/upload
 ```
 
 The HTTP connection will be held open until by the `s3nd` server until a definitive transfer status (success or error) is returned via HTTP status code.
@@ -77,28 +81,28 @@ API documentation is avaiabile from a running `s3nd` instance in `html` format f
 ### Successful Upload
 
 ```console
- ~ $ curl -vvv -d "file=/tmp/foo" -d "uri=s3://bar/foo" http://localhost:15555/upload
+ ~ $ curl -vvv -d "file=/tmp/foo" -d "uri=s3://bar/foo" -d "slug=banana" http://localhost:15555/upload
 * Host localhost:15555 was resolved.
 * IPv6: ::1
 * IPv4: 127.0.0.1
 *   Trying [::1]:15555...
-* connect to ::1 port 15555 from ::1 port 38094 failed: Connection refused
+* connect to ::1 port 15555 from ::1 port 50792 failed: Connection refused
 *   Trying 127.0.0.1:15555...
 * Connected to localhost (127.0.0.1) port 15555
 > POST /upload HTTP/1.1
 > Host: localhost:15555
 > User-Agent: curl/8.9.1
 > Accept: */*
-> Content-Length: 30
+> Content-Length: 42
 > Content-Type: application/x-www-form-urlencoded
 > 
-* upload completely sent off: 30 bytes
+* upload completely sent off: 42 bytes
 < HTTP/1.1 200 OK
 < Content-Type: application/json
-< Date: Fri, 30 May 2025 17:36:13 GMT
-< Content-Length: 198
+< Date: Fri, 11 Jul 2025 17:05:56 GMT
+< Content-Length: 277
 < 
-{"code":200,"msg":"upload succeeded","task":{"id":"0344cbb5-d097-48c4-86ad-75d4eb038cea","uri":"s3://bar/foo","file":"/tmp/foo","duration":"20.021872ms","attempts":1,"transfer_rate":"0.000Mbit/s"}}
+{"code":200,"msg":"upload succeeded","task":{"id":"f05fda82-8929-4313-a755-04bd9b36f95c","uri":"s3://bar/foo","file":"/tmp/foo","duration":"21.078453ms","duration_seconds":0.021078453,"attempts":1,"size_bytes":0,"upload_parts":1,"transfer_rate":"0.000Mbit/s","slug":"banana"}}
 * Connection #0 to host localhost left intact
 ```
 

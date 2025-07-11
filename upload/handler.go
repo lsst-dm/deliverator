@@ -59,6 +59,7 @@ type UploadTask struct {
 	UploadParts       int64       `json:"upload_parts,omitempty" example:"1"`
 	TransferRate      string      `json:"transfer_rate,omitempty" example:"1000B/s"` // human friendly
 	TransferRateMbits float64     `json:"transfer_rate_mbits,omitzero" example:"0.001"`
+	Slug              *string     `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
 } //@name task
 
 func NewUploadTask(startTime time.Time) *UploadTask {
@@ -117,6 +118,7 @@ type requestStatusSwag400 struct {
 		Id       uuid.UUID `json:"id" swaggertype:"string" format:"uuid"`
 		File     *string   `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
 		Duration string    `json:"duration,omitempty" example:"37.921µs"`
+		Slug     string    `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
 	} `json:"task,omitempty"`
 } //@name requestStatus400
 
@@ -146,6 +148,7 @@ type requestStatusSwag504 struct {
 		Uri      *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
 		File     *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
 		Duration string      `json:"duration,omitempty" example:"56.115µs"`
+		Slug     string      `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
 	} `json:"task,omitempty"`
 } //@name requestStatus504
 
@@ -219,6 +222,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 // @Produce      json
 // @Param        uri  formData  string true  "Destination S3 URI"
 // @Param        file formData  string true  "path to file to upload"
+// @Param        slug formData  string false "arbitrary string to include in logs"
 // @Success      200  {object}  RequestStatus
 // @Failure      400  {object}  requestStatusSwag400
 // @Failure      500  {object}  requestStatusSwag500
@@ -351,6 +355,14 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 		task.Uri = &RequestURL{*uri}
 		task.Bucket = &bucket
 		task.Key = &key
+	}
+
+	{
+		// the slug param is optional
+		slug := r.PostFormValue("slug")
+		if slug != "" {
+			task.Slug = &slug
+		}
 	}
 
 	// obtain file size to determine the number of upload parts and to compute
