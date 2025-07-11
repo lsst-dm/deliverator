@@ -48,6 +48,12 @@ const docTemplate = `{
                         "name": "file",
                         "in": "formData",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "arbitrary string to include in logs",
+                        "name": "slug",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -173,6 +179,11 @@ const docTemplate = `{
                         "id": {
                             "type": "string",
                             "format": "uuid"
+                        },
+                        "slug": {
+                            "description": "for logging",
+                            "type": "string",
+                            "example": "Gray Garden Slug"
                         }
                     }
                 }
@@ -215,6 +226,11 @@ const docTemplate = `{
                         "size_bytes": {
                             "type": "integer",
                             "example": 1000
+                        },
+                        "slug": {
+                            "description": "for logging",
+                            "type": "string",
+                            "example": "Gray Garden Slug"
                         },
                         "transfer_rate": {
                             "description": "human friendly",
@@ -263,6 +279,11 @@ const docTemplate = `{
                             "type": "string",
                             "format": "uuid"
                         },
+                        "slug": {
+                            "description": "for logging",
+                            "type": "string",
+                            "example": "Gray Garden Slug"
+                        },
                         "uri": {
                             "type": "string",
                             "example": "s3://my-bucket/my-key"
@@ -298,6 +319,11 @@ const docTemplate = `{
                 "size_bytes": {
                     "type": "integer",
                     "example": 1000
+                },
+                "slug": {
+                    "description": "for logging",
+                    "type": "string",
+                    "example": "Gray Garden Slug"
                 },
                 "transfer_rate": {
                     "description": "human friendly",

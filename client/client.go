@@ -37,7 +37,7 @@ type UploadStatus struct {
 }
 
 // Submit a upload request to the s3nd service.
-func (c *Client) Upload(ctx context.Context, file string, uri url.URL) (*upload.RequestStatus, error) {
+func (c *Client) Upload(ctx context.Context, file string, uri url.URL, slug string) (*upload.RequestStatus, error) {
 	endpoint := c.server
 	endpoint.Path = "/upload"
 
@@ -45,6 +45,7 @@ func (c *Client) Upload(ctx context.Context, file string, uri url.URL) (*upload.
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint.String(), strings.NewReader(url.Values{
 		"file": {file},
 		"uri":  {uri.String()},
+		"slug": {slug},
 	}.Encode()))
 	if err != nil {
 		return nil, gherrors.Wrapf(err, "error sending file %q to uri %q", file, uri.String())
@@ -76,7 +77,8 @@ func (c *Client) Upload(ctx context.Context, file string, uri url.URL) (*upload.
 }
 
 // Submit multiple upload requests to s3nd in parallel.
-func (c *Client) UploadMulti(ctx context.Context, files map[string]url.URL) (*[]*UploadStatus, error) {
+// The slug is the same for all files.
+func (c *Client) UploadMulti(ctx context.Context, files map[string]url.URL, slug string) (*[]*UploadStatus, error) {
 	var wg sync.WaitGroup
 	statusCh := make(chan *UploadStatus, len(files))
 
@@ -84,7 +86,7 @@ func (c *Client) UploadMulti(ctx context.Context, files map[string]url.URL) (*[]
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			status, err := c.Upload(ctx, f, uri)
+			status, err := c.Upload(ctx, f, uri, slug)
 			statusCh <- &UploadStatus{
 				Server:        c.Server(),
 				RequestStatus: status,
