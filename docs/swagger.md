@@ -228,7 +228,7 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `37.921µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
-| slug | string| `string` |  | | for logging | `foo-bar-baz` |
+| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
 
 
 
@@ -309,7 +309,7 @@ Status: Gateway Timeout
 | duration | string| `string` |  | |  | `56.115µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
-| slug | string| `string` |  | | for logging | `foo-bar-baz` |
+| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
 | uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
 
 
