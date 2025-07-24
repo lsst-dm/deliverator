@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -13,8 +12,6 @@ import (
 	gherrors "github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
-
-var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 // ConnTracker records and tracks every conn the transport dials. A conn is
 // removed from the active list when it is closed by http.Transport.
@@ -103,7 +100,7 @@ func (t *ConnTracker) markClosed(c net.Conn) {
 	// Aggregate TCPInfo from all closed connections
 	info, err := getConnTcpInfo(c)
 	if err != nil {
-		logger.Error("error calling getConnTcpInfo()", slog.Any("error", err))
+		slog.Error("error calling getConnTcpInfo()", slog.Any("error", err))
 	} else if info != nil {
 		t.tcpInfoSumClosed = addTcpInfo(t.tcpInfoSumClosed, info)
 	}
@@ -129,7 +126,7 @@ func (t *ConnTracker) startConnStats() {
 
 			tcpInfo, _ := t.GetTcpInfo()
 
-			logger.Info("tcpinfo total", slog.Any("tcpinfo", tcpInfo))
+			slog.Info("tcpinfo total", slog.Any("tcpinfo", tcpInfo))
 		}
 	}()
 }
@@ -216,7 +213,6 @@ func addTcpInfo(a, b *unix.TCPInfo) *unix.TCPInfo {
 	infoSum.Fackets += b.Fackets
 	infoSum.Lost += b.Lost
 	infoSum.Rcv_ooopack += b.Rcv_ooopack
-	infoSum.Reordering += b.Reordering
 	infoSum.Reord_seen += b.Reord_seen
 	infoSum.Retrans += b.Retrans
 	infoSum.Sacked += b.Sacked
