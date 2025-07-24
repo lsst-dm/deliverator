@@ -2,6 +2,7 @@ package conntracker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"os"
@@ -9,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pkg/errors"
+	gherrors "github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -31,7 +32,7 @@ func NewConnTracker(d *net.Dialer) *ConnTracker {
 		tcpInfoSumClosed: &unix.TCPInfo{},
 	}
 
-	// enable periocdic stats logging -- useful for debugging
+	// enable periodic stats logging -- useful for debugging
 	// t.startConnStats()
 
 	return t
@@ -100,8 +101,12 @@ func (t *ConnTracker) markClosed(c net.Conn) {
 	defer t.mu.Unlock()
 
 	// Aggregate TCPInfo from all closed connections
-	info, _ := getConnTcpInfo(c)
-	t.tcpInfoSumClosed = addTcpInfo(t.tcpInfoSumClosed, info)
+	info, err := getConnTcpInfo(c)
+	if err != nil {
+		logger.Error("error calling getConnTcpInfo()", slog.Any("error", err))
+	} else if info != nil {
+		t.tcpInfoSumClosed = addTcpInfo(t.tcpInfoSumClosed, info)
+	}
 
 	delete(t.active, c)
 }
@@ -122,21 +127,22 @@ func (t *ConnTracker) startConnStats() {
 		for {
 			<-ticker.C
 
-			tcpInfo := t.GetTcpInfo()
+			tcpInfo, _ := t.GetTcpInfo()
 
 			logger.Info("tcpinfo total", slog.Any("tcpinfo", tcpInfo))
 		}
 	}()
 }
 
-func (t *ConnTracker) GetTcpInfo() *unix.TCPInfo {
+func (t *ConnTracker) GetTcpInfo() (*unix.TCPInfo, error) {
 	tcpInfoSum := &unix.TCPInfo{}
+	var errs []error
 
 	t.Monkey(func(active map[net.Conn]struct{}) {
 		for conn := range active {
 			tcpInfo, err := getConnTcpInfo(conn)
 			if err != nil {
-				logger.Error("getConnTcpInfo()", "error", err.Error())
+				errs = append(errs, gherrors.Wrap(err, "getConnTcpInfo()"))
 				continue
 			}
 
@@ -148,7 +154,11 @@ func (t *ConnTracker) GetTcpInfo() *unix.TCPInfo {
 		tcpInfoSum = addTcpInfo(t.tcpInfoSumClosed, tcpInfoSum)
 	})
 
-	return tcpInfoSum
+	if len(errs) > 0 {
+		return tcpInfoSum, errors.Join(errs...)
+	}
+
+	return tcpInfoSum, nil
 }
 
 func getConnTcpInfo(conn net.Conn) (*unix.TCPInfo, error) {
@@ -173,7 +183,7 @@ func getRawConn(conn net.Conn) (syscall.RawConn, error) {
 
 	rc, err := sc.SyscallConn()
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
+		return nil, gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
 	}
 
 	return rc, nil
@@ -186,10 +196,10 @@ func getRawConnTcpInfo(conn syscall.RawConn) (*unix.TCPInfo, error) {
 	if err := conn.Control(func(fd uintptr) {
 		info, operr = unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
 	}); err != nil {
-		return nil, errors.Wrap(err, "unable to get TCP_INFO")
+		return nil, gherrors.Wrap(err, "unable to get TCP_INFO")
 	}
 	if operr != nil {
-		return nil, errors.Wrap(operr, "unable to get TCP_INFO")
+		return nil, gherrors.Wrap(operr, "unable to get TCP_INFO")
 	}
 
 	return info, nil
