@@ -48,6 +48,10 @@ func (h *S3ndHandler) ConnTracker() *conntracker.ConnTracker {
 	return h.connTracker
 }
 
+func (h *S3ndHandler) Conf() *conf.S3ndConf {
+	return h.conf
+}
+
 type UploadTask struct {
 	Id                uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
 	Uri               *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
