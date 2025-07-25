@@ -11,8 +11,6 @@ import (
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
 
-var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
 type S3ndConf struct {
 	Host                  *string
 	Port                  *int
@@ -116,46 +114,46 @@ func NewConf(version string) S3ndConf {
 	}
 
 	if *conf.EndpointUrl == "" {
-		logger.Error("S3ND_ENDPOINT_URL is required")
+		slog.Error("S3ND_ENDPOINT_URL is required")
 		os.Exit(1)
 	}
 
 	uploadTimeoutDuration, err := time.ParseDuration(*uploadTimeout)
 	if err != nil {
-		logger.Error("S3ND_UPLOAD_TIMEOUT is invalid")
+		slog.Error("S3ND_UPLOAD_TIMEOUT is invalid")
 		os.Exit(1)
 	}
 	conf.UploadTimeout = &uploadTimeoutDuration
 
 	queueTimeoutDuration, err := time.ParseDuration(*queueTimeout)
 	if err != nil {
-		logger.Error("S3ND_QUEUE_TIMEOUT is invalid")
+		slog.Error("S3ND_QUEUE_TIMEOUT is invalid")
 		os.Exit(1)
 	}
 	conf.QueueTimeout = &queueTimeoutDuration
 
 	uploadPartsize, err := k8sresource.ParseQuantity(*uploadPartsizeRaw)
 	if err != nil {
-		logger.Error("S3ND_UPLOAD_PARTSIZE is invalid")
+		slog.Error("S3ND_UPLOAD_PARTSIZE is invalid")
 		os.Exit(1)
 	}
 	conf.UploadPartsize = &uploadPartsize
 
 	uploadBwlimit, err := k8sresource.ParseQuantity(*uploadBwlimitRaw)
 	if err != nil {
-		logger.Error("S3ND_UPLOAD_BWLIMIT is invalid")
+		slog.Error("S3ND_UPLOAD_BWLIMIT is invalid")
 		os.Exit(1)
 	}
 	conf.UploadBwlimit = &uploadBwlimit
 
 	uploadWriteBufferSize, err := k8sresource.ParseQuantity(*uploadWriteBufferSizeRaw)
 	if err != nil {
-		logger.Error("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
+		slog.Error("S3ND_UPLOAD_WRITE_BUFFER_SIZE is invalid")
 		os.Exit(1)
 	}
 	conf.UploadWriteBufferSize = &uploadWriteBufferSize
 
-	logger.Info("service configuration", "conf", conf.ToMap())
+	slog.Info("service configuration", "conf", conf.ToMap())
 
 	return conf
 }

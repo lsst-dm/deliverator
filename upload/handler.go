@@ -41,7 +41,15 @@ type S3ndHandler struct {
 	uploader        *manager.Uploader
 	parallelUploads semaphore.Semaphore
 	uploadPace      int // pace in *bytes* per second for uploads
-	conntracker     *conntracker.ConnTracker
+	connTracker     *conntracker.ConnTracker
+}
+
+func (h *S3ndHandler) ConnTracker() *conntracker.ConnTracker {
+	return h.connTracker
+}
+
+func (h *S3ndHandler) Conf() *conf.S3ndConf {
+	return h.conf
 }
 
 type UploadTask struct {
@@ -179,11 +187,11 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 				return setPacingRate(conn, handler.uploadPace)
 			},
 		}
-		handler.conntracker = conntracker.NewConnTracker(dialer)
+		handler.connTracker = conntracker.NewConnTracker(dialer)
 
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 			defaultTransportOtptions(t)
-			t.DialContext = handler.conntracker.DialContext
+			t.DialContext = handler.connTracker.DialContext
 		})
 	} else {
 		httpClient = awshttp.NewBuildableClient().WithTransportOptions(defaultTransportOtptions)
@@ -468,7 +476,7 @@ func (h *S3ndHandler) updatePace() {
 		return
 	}
 
-	h.conntracker.Monkey(func(active map[net.Conn]struct{}) {
+	h.connTracker.Monkey(func(active map[net.Conn]struct{}) {
 		updateConn := func(c net.Conn) error {
 			sc, ok := c.(syscall.Conn)
 			if !ok {
