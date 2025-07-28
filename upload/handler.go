@@ -181,21 +181,17 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	}
 
-	if conf.UploadBwlimit.Value() != 0 {
-		dialer := &net.Dialer{
-			ControlContext: func(ctx context.Context, network, address string, conn syscall.RawConn) error {
-				return setPacingRate(conn, handler.uploadPace)
-			},
-		}
-		handler.connTracker = conntracker.NewConnTracker(dialer)
-
-		httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
-			defaultTransportOtptions(t)
-			t.DialContext = handler.connTracker.DialContext
-		})
-	} else {
-		httpClient = awshttp.NewBuildableClient().WithTransportOptions(defaultTransportOtptions)
+	dialer := &net.Dialer{
+		ControlContext: func(ctx context.Context, network, address string, conn syscall.RawConn) error {
+			return setPacingRate(conn, handler.uploadPace)
+		},
 	}
+	handler.connTracker = conntracker.NewConnTracker(dialer)
+
+	httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
+		defaultTransportOtptions(t)
+		t.DialContext = handler.connTracker.DialContext
+	})
 
 	awsCfg, err := config.LoadDefaultConfig(
 		context.TODO(),
