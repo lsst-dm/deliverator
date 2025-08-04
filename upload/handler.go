@@ -52,6 +52,10 @@ func (h *S3ndHandler) Conf() *conf.S3ndConf {
 	return h.conf
 }
 
+func (h *S3ndHandler) ParallelUploads() semaphore.Semaphore {
+	return h.parallelUploads
+}
+
 type UploadTask struct {
 	Id                uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
 	Uri               *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`

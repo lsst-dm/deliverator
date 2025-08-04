@@ -27,6 +27,7 @@ func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 		"retrans":        prometheus.NewDesc("tcp_info_retrans", "tcpi_retrans from tcp_info", []string{"endpoint_url"}, nil),
 		"sacked":         prometheus.NewDesc("tcp_info_sacked", "tcpi_sacked from tcp_info", []string{"endpoint_url"}, nil),
 		"total_retrans":  prometheus.NewDesc("tcp_info_total_retrans", "tcpi_total_retrans from tcp_info", []string{"endpoint_url"}, nil),
+		"uploads":        prometheus.NewDesc("uploads", "number of active uploads", []string{"endpoint_url"}, nil),
 	}
 	return &S3ndCollector{handler: handler, descs: descs}
 }
@@ -75,4 +76,6 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, metric := range metrics {
 		ch <- prometheus.MustNewConstMetric(c.descs[metric.name], prometheus.CounterValue, metric.value, eUrl)
 	}
+
+	ch <- prometheus.MustNewConstMetric(c.descs["uploads"], prometheus.GaugeValue, float64(c.handler.ParallelUploads().GetCount()), eUrl)
 }
