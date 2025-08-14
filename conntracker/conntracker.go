@@ -20,6 +20,12 @@ type ConnTracker struct {
 	mu               sync.Mutex
 	active           map[net.Conn]struct{}
 	tcpInfoSumClosed *unix.TCPInfo
+	closed           uint64 // number of closed connections
+}
+
+type ConnTrackerConnections struct {
+	Active uint64 // number of active connections
+	Closed uint64 // number of closed connections
 }
 
 func NewConnTracker(d *net.Dialer) *ConnTracker {
@@ -106,13 +112,18 @@ func (t *ConnTracker) markClosed(c net.Conn) {
 	}
 
 	delete(t.active, c)
+	t.closed++
 }
 
-// Counts returns number of active Conns
-func (t *ConnTracker) Counts() int {
+// returns the number of active & closed Connections
+func (t *ConnTracker) Connections() *ConnTrackerConnections {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return len(t.active)
+
+	return &ConnTrackerConnections{
+		Active: uint64(len(t.active)),
+		Closed: t.closed,
+	}
 }
 
 //nolint:unused

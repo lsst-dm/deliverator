@@ -30,6 +30,8 @@ func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 		"sacked":         prometheus.NewDesc("s3nd_s3_tcp_info_sacked", "tcpi_sacked from tcp_info", labels, nil),
 		"total_retrans":  prometheus.NewDesc("s3nd_s3_tcp_info_total_retrans", "tcpi_total_retrans from tcp_info", labels, nil),
 		"uploads":        prometheus.NewDesc("s3nd_uploads", "number of active uploads", labels, nil),
+		"conn_active":    prometheus.NewDesc("s3nd_s3_tcp_conn_active", "number of active tcp connections to the endpoint", labels, nil),
+		"conn_closed":    prometheus.NewDesc("s3nd_s3_tcp_conn_closed", "number of tcp connections to the endpoint which have been closed", labels, nil),
 	}
 	return &S3ndCollector{handler: handler, descs: descs}
 }
@@ -46,6 +48,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		slog.Error("failed to get aggregate TCP info", "error", err)
 		return
 	}
+	counts := c.handler.ConnTracker().Connections()
 
 	conf := c.handler.Conf()
 	if conf == nil {
@@ -64,7 +67,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 	labels := []string{*conf.EndpointUrl, strconv.Itoa(*conf.Port)}
 
 	// counter(s)
-	metrics := []struct {
+	counters := []struct {
 		name  string
 		value float64
 	}{
@@ -80,12 +83,23 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		{"retrans", float64(tcpInfo.Retrans)},
 		{"sacked", float64(tcpInfo.Sacked)},
 		{"total_retrans", float64(tcpInfo.Total_retrans)},
+		{"conn_closed", float64(counts.Closed)},
 	}
 
-	for _, metric := range metrics {
+	for _, metric := range counters {
 		ch <- prometheus.MustNewConstMetric(c.descs[metric.name], prometheus.CounterValue, metric.value, labels...)
 	}
 
 	// gauge(s)
-	ch <- prometheus.MustNewConstMetric(c.descs["uploads"], prometheus.GaugeValue, float64(c.handler.ParallelUploads().GetCount()), labels...)
+	gauges := []struct {
+		name  string
+		value float64
+	}{
+		{"uploads", float64(c.handler.ParallelUploads().GetCount())},
+		{"conn_active", float64(counts.Active)},
+	}
+
+	for _, metric := range gauges {
+		ch <- prometheus.MustNewConstMetric(c.descs[metric.name], prometheus.GaugeValue, metric.value, labels...)
+	}
 }
