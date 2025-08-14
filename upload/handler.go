@@ -26,12 +26,62 @@ import (
 	"github.com/google/uuid"
 	"github.com/marusama/semaphore/v2"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sys/unix"
 )
 
 var (
 	logger                  = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	errUploadAttemptTimeout = errors.New("upload attempt timeout")
+	uploadRequest           = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_request",
+			Help: "total number of uploads requests including invalid requests and failed uploads",
+		},
+	)
+	uploadValidRequest = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_valid_request",
+			Help: "number of uploads requests which were accepted",
+		},
+	)
+	uploadBadRequest = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_bad_request",
+			Help: "number of uploads requests which were rejected",
+		},
+	)
+	uploadQueueTimeout = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_queue_timeout",
+			Help: "number of uploads requests which timed out while waiting for a upload slot",
+		},
+	)
+	uploadAttempt = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_attempt",
+			Help: "number of attempts to upload a file",
+		},
+	)
+	uploadRetry = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_retry",
+			Help: "number of attempts to upload a file after a failure",
+		},
+	)
+	uploadSuccess = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_success",
+			Help: "number of uploads which completed successfully",
+		},
+	)
+	uploadFailure = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_failure",
+			Help: "number of uploads which failed to complete",
+		},
+	)
 )
 
 type S3ndHandler struct {
@@ -263,9 +313,12 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	// create starting timestamp as early as possible
 	task := NewUploadTask(time.Now())
 
+	uploadRequest.Inc()
+
 	err := h.parseRequest(task, r)
 	if err != nil {
 		task.StopNoUpload()
+		uploadBadRequest.Inc()
 		return RequestStatus{
 			Code: http.StatusBadRequest,
 			Msg:  errors.Wrapf(err, "error parsing request").Error(),
@@ -273,6 +326,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 		}
 	}
 
+	uploadValidRequest.Inc()
 	logger.Info(
 		"queueing",
 		slog.Any("task", task),
@@ -284,8 +338,10 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	if err := h.parallelUploads.Acquire(semaCtx, int(task.UploadParts)); err != nil {
 		task.StopNoUpload()
 		if errors.Is(err, context.DeadlineExceeded) {
+			uploadQueueTimeout.Inc()
 			err = errors.Wrap(err, "upload queue timeout")
 		} else {
+			uploadFailure.Inc()
 			err = errors.Wrap(err, "unable to aquire upload queue semaphore")
 		}
 		return RequestStatus{
@@ -308,6 +364,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
 		task.StopNoUpload()
+		uploadFailure.Inc()
 		return RequestStatus{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),
@@ -317,6 +374,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	task.Stop()
 
+	uploadSuccess.Inc()
 	return RequestStatus{
 		Code: http.StatusOK,
 		Msg:  "upload succeeded",
@@ -395,6 +453,10 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 
 	maxAttempts := *h.conf.UploadTries
 	for task.Attempts = 1; task.Attempts <= maxAttempts; task.Attempts++ {
+		uploadAttempt.Inc()
+		if task.Attempts > 1 {
+			uploadRetry.Inc()
+		}
 		uploadCtx, cancel := context.WithTimeoutCause(ctx, *h.conf.UploadTimeout, errUploadAttemptTimeout)
 		defer cancel()
 		_, err = h.uploader.Upload(uploadCtx, &s3.PutObjectInput{
