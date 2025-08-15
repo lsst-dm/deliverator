@@ -29,7 +29,7 @@ func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 		"retrans":        prometheus.NewDesc("s3nd_s3_tcp_info_retrans", "tcpi_retrans from tcp_info", labels, nil),
 		"sacked":         prometheus.NewDesc("s3nd_s3_tcp_info_sacked", "tcpi_sacked from tcp_info", labels, nil),
 		"total_retrans":  prometheus.NewDesc("s3nd_s3_tcp_info_total_retrans", "tcpi_total_retrans from tcp_info", labels, nil),
-		"uploads":        prometheus.NewDesc("s3nd_uploads", "number of active uploads", labels, nil),
+		"upload_active":  prometheus.NewDesc("s3nd_upload_active", "number of active uploads", labels, nil),
 		"conn_active":    prometheus.NewDesc("s3nd_s3_tcp_conn_active", "number of active tcp connections to the endpoint", labels, nil),
 		"conn_closed":    prometheus.NewDesc("s3nd_s3_tcp_conn_closed", "number of tcp connections to the endpoint which have been closed", labels, nil),
 	}
@@ -95,7 +95,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		name  string
 		value float64
 	}{
-		{"uploads", float64(c.handler.ParallelUploads().GetCount())},
+		{"upload_active", float64(c.handler.ParallelUploads().GetCount())},
 		{"conn_active", float64(counts.Active)},
 	}
 
