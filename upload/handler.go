@@ -36,49 +36,49 @@ var (
 	errUploadAttemptTimeout = errors.New("upload attempt timeout")
 	uploadRequest           = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_request",
+			Name: "s3nd_upload_requests_total",
 			Help: "total number of uploads requests including invalid requests and failed uploads",
 		},
 	)
 	uploadValidRequest = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_valid_request",
+			Name: "s3nd_upload_valid_requests_total",
 			Help: "number of uploads requests which were accepted",
 		},
 	)
 	uploadBadRequest = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_bad_request",
+			Name: "s3nd_upload_bad_requests_total",
 			Help: "number of uploads requests which were rejected",
 		},
 	)
 	uploadQueueTimeout = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_queue_timeout",
+			Name: "s3nd_upload_queue_timeouts_total",
 			Help: "number of uploads requests which timed out while waiting for a upload slot",
 		},
 	)
 	uploadAttempt = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_attempt",
+			Name: "s3nd_upload_attempts_total",
 			Help: "number of attempts to upload a file",
 		},
 	)
 	uploadRetry = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_retry",
+			Name: "s3nd_upload_retries_total",
 			Help: "number of attempts to upload a file after a failure",
 		},
 	)
 	uploadSuccess = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_success",
+			Name: "s3nd_upload_successful_total",
 			Help: "number of uploads which completed successfully",
 		},
 	)
 	uploadFailure = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_failure",
+			Name: "s3nd_upload_failures_total",
 			Help: "number of uploads which failed to complete",
 		},
 	)
