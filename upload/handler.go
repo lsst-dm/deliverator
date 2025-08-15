@@ -16,6 +16,7 @@ import (
 
 	"github.com/lsst-dm/s3nd/conf"
 	"github.com/lsst-dm/s3nd/conntracker"
+	"github.com/lsst-dm/s3nd/semaphore"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
@@ -24,7 +25,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	"github.com/google/uuid"
-	"github.com/marusama/semaphore/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -102,8 +102,8 @@ func (h *S3ndHandler) Conf() *conf.S3ndConf {
 	return h.conf
 }
 
-func (h *S3ndHandler) ParallelUploads() semaphore.Semaphore {
-	return h.parallelUploads
+func (h *S3ndHandler) ParallelUploads() *semaphore.Semaphore {
+	return &h.parallelUploads
 }
 
 type UploadTask struct {
