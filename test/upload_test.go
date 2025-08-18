@@ -2,6 +2,7 @@ package s3nd_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,18 +21,15 @@ import (
 
 var _ = Describe("POST /upload", func() {
 	testFile := "test1"
+	f, err := os.CreateTemp("", testFile)
+	Expect(err).NotTo(HaveOccurred())
+	for i := 0; i < 3; i++ {
+		_, err = f.WriteString(testFile + "\n")
+		Expect(err).NotTo(HaveOccurred())
+	}
+	_ = f.Sync()
 
 	It("returns 200", func() {
-		f, err := os.CreateTemp("", testFile)
-		Expect(err).NotTo(HaveOccurred())
-		defer os.Remove(f.Name())
-		defer f.Close()
-		for i := 0; i < 3; i++ {
-			_, err = f.WriteString(testFile + "\n")
-			Expect(err).NotTo(HaveOccurred())
-		}
-		_ = f.Sync()
-
 		resp, err := http.PostForm(s3ndUrl.String()+"/upload",
 			url.Values{
 				"file": {f.Name()},
@@ -52,6 +50,120 @@ var _ = Describe("POST /upload", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(string(data)).To(MatchRegexp(fmt.Sprintf("(%s\n){3}", testFile)))
+	})
+
+	Describe("file parameter", func() {
+		It("is required", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"uri":  {"s3://" + s3ndBucket + "/" + testFile},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: missing field: file"))
+		})
+
+		It("must be an absolute path", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {"does/not/exist"},
+					"uri":  {"s3://" + s3ndBucket + "/" + testFile},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: only absolute file paths are supported"))
+		})
+
+		It("fails when file can not be stat()'d", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {"/does/not/exist"},
+					"uri":  {"s3://" + s3ndBucket + "/" + testFile},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: could not stat file: \"/does/not/exist\""))
+		})
+	})
+
+	Describe("uri parameter", func() {
+		It("is required", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {f.Name()},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: missing field: uri"))
+		})
+
+		It("fails without valid uri", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {f.Name()},
+					"uri":  {"\x7f"},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: unable to parse URI: \"\\x7f\""))
+		})
+
+		It("fails without s3 schema", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {f.Name()},
+					"uri":  {"http://example.com"},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: only s3 scheme is supported: \"http://example.com\""))
+		})
+
+		It("fails without host (bucket)", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {f.Name()},
+					"uri":  {"s3:///" + testFile},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("bad request: unable to parse bucket from URI: \"s3:///" + testFile + "\""))
+		})
 	})
 })
 

@@ -17,6 +17,7 @@ import (
 	"github.com/lsst-dm/s3nd/conf"
 	"github.com/lsst-dm/s3nd/conntracker"
 	"github.com/lsst-dm/s3nd/semaphore"
+	"github.com/lsst-dm/s3nd/upload/badrequesterror"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
@@ -315,8 +316,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	uploadRequest.Inc()
 
-	err := h.parseRequest(task, r)
-	if err != nil {
+	if err := h.parseRequest(task, r); err != nil {
 		task.StopNoUpload()
 		uploadBadRequest.Inc()
 		return RequestStatus{
@@ -386,11 +386,11 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	{
 		file := r.PostFormValue("file")
 		if file == "" {
-			return fmt.Errorf("missing field: file")
+			return badrequesterror.New("missing field: file")
 		}
 
 		if !filepath.IsAbs(file) {
-			return fmt.Errorf("only absolute file paths are supported: %q", html.EscapeString(file))
+			return badrequesterror.New("only absolute file paths are supported: %q", html.EscapeString(file))
 		}
 
 		task.File = &file
@@ -399,21 +399,21 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	{
 		uriRaw := r.PostFormValue("uri")
 		if uriRaw == "" {
-			return fmt.Errorf("missing field: uri")
+			return badrequesterror.New("missing field: uri")
 		}
 
 		uri, err := url.Parse(uriRaw)
 		if err != nil {
-			return fmt.Errorf("unable to parse URI: %q", html.EscapeString(uriRaw))
+			return badrequesterror.New("unable to parse URI: %q", html.EscapeString(uriRaw))
 		}
 
 		if uri.Scheme != "s3" {
-			return fmt.Errorf("only s3 scheme is supported: %q", html.EscapeString(uriRaw))
+			return badrequesterror.New("only s3 scheme is supported: %q", html.EscapeString(uriRaw))
 		}
 
 		bucket := uri.Host
 		if bucket == "" {
-			return fmt.Errorf("unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
+			return badrequesterror.New("unable to parse bucket from URI: %q", html.EscapeString(uriRaw))
 		}
 
 		key := uri.Path[1:] // Remove leading slash
@@ -435,7 +435,7 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	// the transfer rate later
 	fStat, err := os.Stat(*task.File)
 	if err != nil {
-		return errors.Wrapf(err, "could not stat file %v", *task.File)
+		return badrequesterror.Wrap(err, "could not stat file: %q", *task.File)
 	}
 	task.SizeBytes = fStat.Size()
 	// if the file is empty, we still need to upload it, so set the part size to 1
