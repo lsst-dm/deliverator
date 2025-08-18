@@ -3,6 +3,7 @@ package upload
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -26,7 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
+	gherrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sys/unix"
@@ -34,8 +35,9 @@ import (
 
 var (
 	logger                  = slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	errUploadAttemptTimeout = errors.New("upload attempt timeout")
-	errUploadQueueTimeout   = errors.New("upload queue timeout")
+	errUploadAttemptTimeout = gherrors.New("upload attempt timeout")
+	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
+	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
 	uploadRequest           = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_requests_total",
@@ -330,7 +332,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 		uploadBadRequest.Inc()
 		return RequestStatus{
 			Code: http.StatusBadRequest,
-			Msg:  errors.Wrapf(err, "error parsing request").Error(),
+			Msg:  gherrors.Wrapf(err, "error parsing request").Error(),
 			Task: task,
 		}
 	}
@@ -347,14 +349,14 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 		defer cancel()
 		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts)); err != nil {
 			task.StopNoUpload()
-			if errors.Is(context.Cause(ctx), errUploadQueueTimeout) {
+			if gherrors.Is(context.Cause(ctx), errUploadQueueTimeout) {
 				uploadQueueTimeout.Inc()
-			} else if errors.Is(err, context.Canceled) {
+			} else if gherrors.Is(err, context.Canceled) {
+				err = errors.Join(errUploadAborted, err)
 				uploadAbortedRequest.Inc()
 			} else {
-				// XXX should consider this an unknown error
-				uploadFailure.WithLabelValues("XXX").Inc()
-				err = errors.Wrap(err, "unable to aquire upload queue semaphore")
+				// unknown error
+				err = gherrors.Wrap(err, "unable to acquire upload queue semaphore")
 			}
 			return RequestStatus{
 				Code: http.StatusGatewayTimeout,
@@ -459,7 +461,7 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
 	file, err := os.Open(*task.File)
 	if err != nil {
-		return errors.Wrapf(err, "Could not open file %v to upload", *task.File)
+		return gherrors.Wrapf(err, "Could not open file %v to upload", *task.File)
 	}
 	defer file.Close()
 
@@ -482,29 +484,30 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 			var apiErr smithy.APIError
 
 			switch {
-			case errors.As(err, &apiErr):
+			case gherrors.As(err, &apiErr):
+				// fail immediately if the bucket does not exist.  Retry all other s3 gherrors.
 				if apiErr.ErrorCode() == "NoSuchBucket" {
-					return errors.Wrapf(err, "upload failed because the bucket %v does not exist", *task.Bucket)
+					return gherrors.Wrapf(err, "upload failed because the bucket %v does not exist", *task.Bucket)
 				}
-			case errors.Is(err, errUploadAttemptTimeout):
+			case gherrors.Is(err, errUploadAttemptTimeout):
 				errMsg := fmt.Sprintf("upload attempt %v/%v timeout", task.Attempts, maxAttempts)
 
 				// bubble up the error if we've exhausted our attempts
 				if task.Attempts == maxAttempts {
-					return errors.Wrap(err, errMsg)
+					return gherrors.Wrap(err, errMsg)
 				}
 				// otherwise, log the timeout and carry on
 				logger.Warn(errMsg, slog.Any("task", task))
 				continue
-			case errors.Is(err, context.Canceled):
+			case gherrors.Is(err, context.Canceled):
 				// the parent context was cancelled
-				return errors.Wrapf(err, "upload attempt %v cancelled, probably because the client disconnected", task.Attempts)
+				return errors.Join(errUploadAborted, err)
 			}
 
 			// unknown error -- could be a server side problem so could retry
 			errMsg := fmt.Sprintf("unknown error during upload attempt %v/%v", task.Attempts, maxAttempts)
 			if task.Attempts == maxAttempts {
-				return errors.Wrap(err, errMsg)
+				return gherrors.Wrap(err, errMsg)
 			}
 			logger.Warn(errMsg, slog.Any("task", task))
 		} else {
@@ -553,16 +556,16 @@ func (h *S3ndHandler) updatePace() {
 		updateConn := func(c net.Conn) error {
 			sc, ok := c.(syscall.Conn)
 			if !ok {
-				return errors.New("unable to cast net.Conn to syscall.Conn")
+				return gherrors.New("unable to cast net.Conn to syscall.Conn")
 			}
 			rc, err := sc.SyscallConn()
 			if err != nil {
-				return errors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
+				return gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
 			}
 
 			err = setPacingRate(rc, h.uploadPace)
 			if err != nil {
-				return errors.Wrap(err, "unable to set SO_MAX_PACING_RATE on net.Conn")
+				return gherrors.Wrap(err, "unable to set SO_MAX_PACING_RATE on net.Conn")
 			}
 
 			return nil
@@ -570,7 +573,7 @@ func (h *S3ndHandler) updatePace() {
 
 		for conn := range active {
 			if err := updateConn(conn); err != nil {
-				panic(errors.Wrap(err, "unable to update connection pacing rate"))
+				panic(gherrors.Wrap(err, "unable to update connection pacing rate"))
 			}
 		}
 	})

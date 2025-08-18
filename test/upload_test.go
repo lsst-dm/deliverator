@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/lsst-dm/s3nd/client"
@@ -17,6 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	minio "github.com/minio/minio-go/v7"
+	"github.com/onsi/gomega/gbytes"
 )
 
 var _ = Describe("POST /upload", func() {
@@ -163,6 +165,26 @@ var _ = Describe("POST /upload", func() {
 			body, _ := io.ReadAll(resp.Body)
 			_ = json.Unmarshal(body, &status)
 			Expect(status.Msg).To(ContainSubstring("bad request: unable to parse bucket from URI: \"s3:///" + testFile + "\""))
+		})
+	})
+
+	When("client disconnects", func() {
+		It("aborts upload", func() {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(500*time.Microsecond))
+			defer cancel()
+
+			req, err := http.NewRequestWithContext(ctx, "POST", s3ndUrl.String()+"/upload", strings.NewReader(url.Values{
+				"file": {f.Name()},
+				"uri":  {"s3://" + s3ndBucket + "/" + testFile},
+			}.Encode()))
+			Expect(err).NotTo(HaveOccurred())
+
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			_, err = http.DefaultClient.Do(req)
+			// if there was no error, the upload completed before the context deadline
+			Expect(err).To(HaveOccurred())
+
+			Eventually(s3ndOutput, time.Second, 50*time.Millisecond).Should(gbytes.Say("upload request aborted because the client disconnected"))
 		})
 	})
 })

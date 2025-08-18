@@ -44,7 +44,7 @@ var _ = Describe("client.Version", func() {
 		Expect(config).To(HaveKeyWithValue("S3ND_QUEUE_TIMEOUT", "10s"))
 		Expect(config).To(HaveKeyWithValue("S3ND_UPLOAD_TRIES", "1"))
 		Expect(config).To(HaveKeyWithValue("S3ND_UPLOAD_PARTSIZE", "5Mi"))
-		Expect(config).To(HaveKeyWithValue("S3ND_UPLOAD_BWLIMIT", "0"))
+		Expect(config).To(HaveKeyWithValue("S3ND_UPLOAD_BWLIMIT", "1"))
 		Expect(config).To(HaveKeyWithValue("S3ND_UPLOAD_WRITE_BUFFER_SIZE", "64Ki"))
 	})
 })
