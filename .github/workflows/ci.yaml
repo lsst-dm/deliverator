@@ -16,7 +16,7 @@ name: Build and Publish
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GOVERSION: 1.24.3
+  GOVERSION: 1.25.0
 
 jobs:
   build:
@@ -75,7 +75,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1.6
+          version: v2.4.0
 
   oci_image:
     name: Build OCI Image
