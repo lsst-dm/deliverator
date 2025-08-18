@@ -35,6 +35,7 @@ import (
 var (
 	logger                  = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	errUploadAttemptTimeout = errors.New("upload attempt timeout")
+	errUploadQueueTimeout   = errors.New("upload queue timeout")
 	uploadRequest           = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_requests_total",
@@ -59,6 +60,12 @@ var (
 			Help: "number of uploads requests which timed out while waiting for a upload slot",
 		},
 	)
+	uploadAbortedRequest = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_aborted_request_total",
+			Help: "number of uploads requests which were aborted because the client disconnected",
+		},
+	)
 	uploadAttempt = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_attempts_total",
@@ -77,11 +84,12 @@ var (
 			Help: "number of uploads which completed successfully",
 		},
 	)
-	uploadFailure = promauto.NewCounter(
+	uploadFailure = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_failures_total",
 			Help: "number of uploads which failed to complete",
 		},
+		[]string{"reason"},
 	)
 )
 
@@ -291,6 +299,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := h.doServeHTTP(r)
 	if status.Code == http.StatusOK {
+		uploadSuccess.Inc()
 		logger.Info(
 			status.Msg,
 			slog.Int("code", status.Code),
@@ -333,21 +342,25 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 	)
 
 	// limit the number of parallel uploads
-	semaCtx, cancel := context.WithTimeout(r.Context(), *h.conf.QueueTimeout)
-	defer cancel()
-	if err := h.parallelUploads.Acquire(semaCtx, int(task.UploadParts)); err != nil {
-		task.StopNoUpload()
-		if errors.Is(err, context.DeadlineExceeded) {
-			uploadQueueTimeout.Inc()
-			err = errors.Wrap(err, "upload queue timeout")
-		} else {
-			uploadFailure.Inc()
-			err = errors.Wrap(err, "unable to aquire upload queue semaphore")
-		}
-		return RequestStatus{
-			Code: http.StatusGatewayTimeout,
-			Msg:  err.Error(),
-			Task: task,
+	{
+		ctx, cancel := context.WithTimeoutCause(r.Context(), *h.conf.QueueTimeout, errUploadQueueTimeout)
+		defer cancel()
+		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts)); err != nil {
+			task.StopNoUpload()
+			if errors.Is(context.Cause(ctx), errUploadQueueTimeout) {
+				uploadQueueTimeout.Inc()
+			} else if errors.Is(err, context.Canceled) {
+				uploadAbortedRequest.Inc()
+			} else {
+				// XXX should consider this an unknown error
+				uploadFailure.WithLabelValues("XXX").Inc()
+				err = errors.Wrap(err, "unable to aquire upload queue semaphore")
+			}
+			return RequestStatus{
+				Code: http.StatusGatewayTimeout,
+				Msg:  err.Error(),
+				Task: task,
+			}
 		}
 	}
 	defer h.updatePace() // rebalance after semaphore weight is released
@@ -364,7 +377,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
 		task.StopNoUpload()
-		uploadFailure.Inc()
+		uploadFailure.WithLabelValues("XXX").Inc()
 		return RequestStatus{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),
@@ -374,7 +387,6 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	task.Stop()
 
-	uploadSuccess.Inc()
 	return RequestStatus{
 		Code: http.StatusOK,
 		Msg:  "upload succeeded",
@@ -468,14 +480,13 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 		})
 		if err != nil {
 			var apiErr smithy.APIError
-			cause := context.Cause(uploadCtx)
 
 			switch {
 			case errors.As(err, &apiErr):
 				if apiErr.ErrorCode() == "NoSuchBucket" {
 					return errors.Wrapf(err, "upload failed because the bucket %v does not exist", *task.Bucket)
 				}
-			case errors.Is(cause, errUploadAttemptTimeout):
+			case errors.Is(err, errUploadAttemptTimeout):
 				errMsg := fmt.Sprintf("upload attempt %v/%v timeout", task.Attempts, maxAttempts)
 
 				// bubble up the error if we've exhausted our attempts
