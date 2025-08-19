@@ -57,7 +57,7 @@ func NewConnTracker(d *net.Dialer) *ConnTracker {
 //
 //	// 		var operr error
 //	// 		if err := rc.Control(func(fd uintptr) {
-//	// 			operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, h.uploadPace)
+//	// 			operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(h.Pace()))
 //	// 		}); err != nil {
 //	// 			return errors.Wrap(err, "unable to set SO_MAX_PACING_RATE on net.Conn")
 //	// 		}

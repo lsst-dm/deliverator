@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -67,7 +68,7 @@ type S3ndHandler struct {
 	s3Client        *s3.Client
 	uploader        *manager.Uploader
 	parallelUploads semaphore.Semaphore
-	uploadPace      int // pace in *bytes* per second for uploads
+	uploadPace      atomic.Int64 // pace in *bytes* per second for uploads
 	connTracker     *conntracker.ConnTracker
 }
 
@@ -81,6 +82,14 @@ func (h *S3ndHandler) Conf() *conf.S3ndConf {
 
 func (h *S3ndHandler) ParallelUploads() *semaphore.Semaphore {
 	return &h.parallelUploads
+}
+
+func (h *S3ndHandler) Pace() int64 {
+	return h.uploadPace.Load()
+}
+
+func (h *S3ndHandler) setPace(rate int64) {
+	h.uploadPace.Store(rate)
 }
 
 type UploadTask struct {
@@ -232,7 +241,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 
 	dialer := &net.Dialer{
 		ControlContext: func(ctx context.Context, network, address string, conn syscall.RawConn) error {
-			return setPacingRate(conn, handler.uploadPace)
+			return setPacingRate(conn, handler.Pace())
 		},
 	}
 	handler.connTracker = conntracker.NewConnTracker(dialer)
@@ -528,12 +537,12 @@ attempts:
 // based on the number of active uploads, adjust the packet pacing rate on all
 // net.Conn's in the connection pool
 func (h *S3ndHandler) updatePace() {
-	bwLimitBytes := int(h.conf.UploadBwlimit.Value() / 8)
+	bwLimitBytes := int64(h.conf.UploadBwlimit.Value() / 8)
 	// avoid div by zero
 	if h.parallelUploads.GetCount() == 0 {
-		h.uploadPace = bwLimitBytes
+		h.setPace(bwLimitBytes)
 	} else {
-		h.uploadPace = bwLimitBytes / h.parallelUploads.GetCount()
+		h.setPace(bwLimitBytes / int64(h.parallelUploads.GetCount()))
 	}
 
 	if h.conf.UploadBwlimit.Value() == 0 {
@@ -545,7 +554,7 @@ func (h *S3ndHandler) updatePace() {
 		// noop if there is no upload bandwidth limit configured
 		return
 	} else {
-		paceMbits := float64(h.uploadPace*8) / (1 << 20)
+		paceMbits := float64(h.Pace()*8) / (1 << 20)
 		logger.Info(
 			"active uploads",
 			"uploads", h.parallelUploads.GetCount(),
@@ -570,7 +579,7 @@ func (h *S3ndHandler) updatePace() {
 				return gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
 			}
 
-			err = setPacingRate(rc, h.uploadPace)
+			err = setPacingRate(rc, h.Pace())
 			if err != nil {
 				return gherrors.Wrap(err, "unable to set SO_MAX_PACING_RATE on net.Conn")
 			}
@@ -593,11 +602,12 @@ func divCeil(a, b int64) int64 {
 	return (a + b - 1) / b // rounds up
 }
 
-func setPacingRate(conn syscall.RawConn, pace int) error {
+func setPacingRate(conn syscall.RawConn, pace int64) error {
 	// https://pkg.go.dev/syscall#RawConn
 	var operr error
 	if err := conn.Control(func(fd uintptr) {
-		operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, pace)
+		// syscall.SetsockoptInt64 doesn't exist
+		operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(pace))
 	}); err != nil {
 		return err
 	}
