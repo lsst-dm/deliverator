@@ -63,6 +63,20 @@ var (
 			Help: "number of bytes transferred for files which completed successfully",
 		},
 	)
+	s3HTTPResponses = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "s3nd_s3_http_responses_total",
+			Help: "http status codes returned by the s3 service",
+		},
+		[]string{"code", "reason"},
+	)
+	s3APIErrors = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "s3nd_s3_api_errors_total",
+			Help: "api status codes returned by the s3 service",
+		},
+		[]string{"code", "reason"},
+	)
 )
 
 type S3ndHandler struct {
@@ -292,6 +306,17 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	var badRequestErr *badrequesterror.BadRequestError
 	var smithyAPIErr smithy.APIError
+	var awsHTTPError *awshttp.ResponseError
+
+	awsError := func(err error) {
+		if gherrors.As(err, &smithyAPIErr) {
+			s3APIErrors.WithLabelValues(smithyAPIErr.ErrorCode(), smithyAPIErr.ErrorMessage()).Inc()
+		}
+		if gherrors.As(err, &awsHTTPError) {
+			awsCode := awsHTTPError.HTTPStatusCode()
+			s3HTTPResponses.WithLabelValues(strconv.Itoa(awsCode), http.StatusText(awsCode)).Inc()
+		}
+	}
 
 	switch {
 	case err == nil: // upload succeeded
@@ -316,10 +341,12 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case gherrors.Is(err, errUploadNoSuchBucket):
 		code = http.StatusNotFound
 		msg = err.Error()
+		awsError(err)
 	case gherrors.As(err, &smithyAPIErr):
 		// aws sdk errors other than NoSuchBucket
 		code = http.StatusBadGateway
 		msg = err.Error()
+		awsError(err)
 	default:
 		code = http.StatusInternalServerError
 		msg = err.Error()
@@ -339,6 +366,9 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// it is an error response
 		w.Header().Set("x-error", status.Msg)
 		logLevel = slog.LevelError
+	} else {
+		// assume there was an http 200 response from s3
+		s3HTTPResponses.WithLabelValues(strconv.Itoa(code), http.StatusText(code)).Inc()
 	}
 
 	logger.Log(
