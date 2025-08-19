@@ -169,7 +169,7 @@ var _ = Describe("POST /upload", func() {
 	})
 
 	When("bucket does not exist", func() {
-		PIt("returns 404", func() {
+		It("returns 404", func() {
 			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
 				url.Values{
 					"file": {f.Name()},

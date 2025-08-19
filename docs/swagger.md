@@ -100,6 +100,8 @@ POST /upload
 |------|--------|-------------|:-----------:|--------|
 | [200](#post-upload-200) | OK | OK |  | [schema](#post-upload-200-schema) |
 | [400](#post-upload-400) | Bad Request | Bad Request | ✓ | [schema](#post-upload-400-schema) |
+| [404](#post-upload-404) | Not Found | Not Found | ✓ | [schema](#post-upload-404-schema) |
+| [408](#post-upload-408) | Request Timeout | Request Timeout | ✓ | [schema](#post-upload-408-schema) |
 | [500](#post-upload-500) | Internal Server Error | Internal Server Error | ✓ | [schema](#post-upload-500-schema) |
 | [504](#post-upload-504) | Gateway Timeout | Gateway Timeout | ✓ | [schema](#post-upload-504-schema) |
 
@@ -123,6 +125,36 @@ Status: Bad Request
   
 
 [RequestStatus400](#request-status400)
+
+###### Response headers
+
+| Name | Type | Go type | Separator | Default | Description |
+|------|------|---------|-----------|---------|-------------|
+| X-Error | string | `string` |  |  | error message |
+
+##### <span id="post-upload-404"></span> 404 - Not Found
+Status: Not Found
+
+###### <span id="post-upload-404-schema"></span> Schema
+   
+  
+
+[RequestStatus404](#request-status404)
+
+###### Response headers
+
+| Name | Type | Go type | Separator | Default | Description |
+|------|------|---------|-----------|---------|-------------|
+| X-Error | string | `string` |  |  | error message |
+
+##### <span id="post-upload-408"></span> 408 - Request Timeout
+Status: Request Timeout
+
+###### <span id="post-upload-408-schema"></span> Schema
+   
+  
+
+[RequestStatus408](#request-status408)
 
 ###### Response headers
 
@@ -232,6 +264,40 @@ Status: Gateway Timeout
 
 
 
+### <span id="request-status404"></span> requestStatus404
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| code | integer| `int64` |  | |  | `404` |
+| msg | string| `string` |  | |  | `upload failed because the bucket does not exist` |
+| task | [Task](#task)| `Task` |  | |  |  |
+
+
+
+### <span id="request-status408"></span> requestStatus408
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| code | integer| `int64` |  | |  | `408` |
+| msg | string| `string` |  | |  | `upload queue timeout` |
+| task | [Task](#task)| `Task` |  | |  |  |
+
+
+
 ### <span id="request-status500"></span> requestStatus500
 
 
@@ -244,7 +310,7 @@ Status: Gateway Timeout
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | code | integer| `int64` |  | |  | `500` |
-| msg | string| `string` |  | |  | `upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded` |
+| msg | string| `string` |  | |  | `unknown error` |
 | task | [RequestStatus500Task](#request-status500-task)| `RequestStatus500Task` |  | |  |  |
 
 
@@ -288,7 +354,7 @@ Status: Gateway Timeout
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | code | integer| `int64` |  | |  | `504` |
-| msg | string| `string` |  | |  | `upload queue timeout: context deadline exceeded` |
+| msg | string| `string` |  | |  | `timeout during upload attempt 2/2` |
 | task | [RequestStatus504Task](#request-status504-task)| `RequestStatus504Task` |  | |  |  |
 
 

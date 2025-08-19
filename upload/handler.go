@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -39,60 +40,24 @@ var (
 	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
 	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
 	errUploadNoSuchBucket   = gherrors.New("upload failed because the bucket does not exist")
-	uploadRequest           = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_requests_total",
-			Help: "total number of uploads requests including invalid requests and failed uploads",
-		},
-	)
-	uploadValidRequest = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_valid_requests_total",
-			Help: "number of uploads requests which were accepted",
-		},
-	)
-	uploadBadRequest = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_bad_requests_total",
-			Help: "number of uploads requests which were rejected",
-		},
-	)
-	uploadQueueTimeout = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_queue_timeouts_total",
-			Help: "number of uploads requests which timed out while waiting for a upload slot",
-		},
-	)
-	uploadAbortedRequest = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_aborted_request_total",
-			Help: "number of uploads requests which were aborted because the client disconnected",
-		},
-	)
-	uploadAttempt = promauto.NewCounter(
+	uploadAttempts          = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_attempts_total",
 			Help: "number of attempts to upload a file",
 		},
 	)
-	uploadRetry = promauto.NewCounter(
+	uploadRetries = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_retries_total",
 			Help: "number of attempts to upload a file after a failure",
 		},
 	)
-	uploadSuccess = promauto.NewCounter(
+	uploadRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_successful_total",
-			Help: "number of uploads which completed successfully",
-		},
-	)
-	uploadFailure = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "s3nd_upload_failures_total",
+			Name: "s3nd_upload_requests_total",
 			Help: "number of uploads which failed to complete",
 		},
-		[]string{"reason"},
+		[]string{"code", "reason"},
 	)
 )
 
@@ -196,13 +161,31 @@ type requestStatusSwag400 struct {
 	} `json:"task,omitempty"`
 } //@name requestStatus400
 
+// requestStatusSwag404 is used only for Swagger documentation
+//
+//nolint:unused
+type requestStatusSwag404 struct {
+	RequestStatus
+	Code int    `json:"code" example:"404"`
+	Msg  string `json:"msg,omitempty" example:"upload failed because the bucket does not exist"`
+} //@name requestStatus404
+
+// requestStatusSwag408 is used only for Swagger documentation
+//
+//nolint:unused
+type requestStatusSwag408 struct {
+	RequestStatus
+	Code int    `json:"code" example:"408"`
+	Msg  string `json:"msg,omitempty" example:"upload queue timeout"`
+} //@name requestStatus408
+
 // requestStatusSwag500 is used only for Swagger documentation
 //
 //nolint:unused
 type requestStatusSwag500 struct {
 	RequestStatus
 	Code int    `json:"code" example:"500"`
-	Msg  string `json:"msg,omitempty" example:"upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded"`
+	Msg  string `json:"msg,omitempty" example:"unknown error"`
 	Task *struct {
 		UploadTask
 		Duration string `json:"duration,omitempty" example:"37.921µs"`
@@ -216,7 +199,7 @@ type requestStatusSwag500 struct {
 type requestStatusSwag504 struct {
 	RequestStatus
 	Code int    `json:"code" example:"504"`
-	Msg  string `json:"msg,omitempty" example:"upload queue timeout: context deadline exceeded"`
+	Msg  string `json:"msg,omitempty" example:"timeout during upload attempt 2/2"`
 	Task *struct {
 		Id       uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
 		Uri      *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
@@ -295,50 +278,89 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 // @Param        slug formData  string false "arbitrary string to include in logs"
 // @Success      200  {object}  RequestStatus
 // @Failure      400  {object}  requestStatusSwag400
+// @Failure      404  {object}  requestStatusSwag404
+// @Failure      408  {object}  requestStatusSwag408
 // @Failure      500  {object}  requestStatusSwag500
 // @Failure      504  {object}  requestStatusSwag504
 // @Router       /upload [post]
-// @Header       400,500,504 {string} X-Error "error message"
+// @Header       400,404,408,500,504 {string} X-Error "error message"
 func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	status := h.doServeHTTP(r)
-	if status.Code == http.StatusOK {
-		uploadSuccess.Inc()
-		logger.Info(
-			status.Msg,
-			slog.Int("code", status.Code),
-			slog.Any("task", status.Task),
-		)
-	} else {
-		logger.Error(
-			status.Msg,
-			slog.Int("code", status.Code),
-			slog.Any("task", status.Task),
-		)
-		w.Header().Set("x-error", status.Msg)
+	task, err := h.doServeHTTP(r)
+
+	var code int
+	var msg string
+	var badRequestErr *badrequesterror.BadRequestError
+	var smithyAPIErr smithy.APIError
+
+	switch {
+	case err == nil: // upload succeeded
+		code = http.StatusOK
+		msg = "upload succeeded"
+	case gherrors.As(err, &badRequestErr):
+		// bad request, e.g. missing required fields
+		code = http.StatusBadRequest
+		msg = err.Error()
+	case gherrors.Is(err, errUploadAborted):
+		// the socket was closed, so no http status code can be sent to the client.
+		// Setting the status code is only for the purposes of logging/metrics.
+		code = http.StatusTeapot
+		msg = err.Error()
+	case gherrors.Is(err, errUploadQueueTimeout):
+		code = http.StatusRequestTimeout
+		msg = err.Error()
+	case gherrors.Is(err, errUploadAttemptTimeout):
+		code = http.StatusGatewayTimeout
+		msg = err.Error()
+	case gherrors.Is(err, errUploadNoSuchBucket):
+		code = http.StatusNotFound
+		msg = err.Error()
+	case gherrors.As(err, &smithyAPIErr):
+		// aws sdk errors other than NoSuchBucket
+		code = http.StatusBadGateway
+		msg = err.Error()
+	default:
+		code = http.StatusInternalServerError
+		msg = err.Error()
 	}
+
+	uploadRequests.WithLabelValues(strconv.Itoa(code), http.StatusText(code)).Inc()
+
+	status := RequestStatus{
+		Code: code,
+		Msg:  msg,
+		Task: task,
+	}
+
+	logLevel := slog.LevelInfo
+
+	if status.Code != http.StatusOK {
+		// it is an error response
+		w.Header().Set("x-error", status.Msg)
+		logLevel = slog.LevelError
+	}
+
+	logger.Log(
+		r.Context(),
+		logLevel,
+		status.Msg,
+		slog.Int("code", status.Code),
+		slog.Any("task", status.Task),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status.Code)
 	_ = json.NewEncoder(w).Encode(status)
 }
 
-func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
+func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 	// create starting timestamp as early as possible
 	task := NewUploadTask(time.Now())
 
-	uploadRequest.Inc()
-
 	if err := h.parseRequest(task, r); err != nil {
 		task.StopNoUpload()
-		uploadBadRequest.Inc()
-		return RequestStatus{
-			Code: http.StatusBadRequest,
-			Msg:  gherrors.Wrapf(err, "error parsing request").Error(),
-			Task: task,
-		}
+		return task, err
 	}
 
-	uploadValidRequest.Inc()
 	logger.Info(
 		"queueing",
 		slog.Any("task", task),
@@ -351,19 +373,14 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts)); err != nil {
 			task.StopNoUpload()
 			if gherrors.Is(context.Cause(ctx), errUploadQueueTimeout) {
-				uploadQueueTimeout.Inc()
+				err = errors.Join(errUploadQueueTimeout, err)
 			} else if gherrors.Is(err, context.Canceled) {
 				err = errors.Join(errUploadAborted, err)
-				uploadAbortedRequest.Inc()
 			} else {
 				// unknown error
 				err = gherrors.Wrap(err, "unable to acquire upload queue semaphore")
 			}
-			return RequestStatus{
-				Code: http.StatusGatewayTimeout,
-				Msg:  err.Error(),
-				Task: task,
-			}
+			return task, err
 		}
 	}
 	defer h.updatePace() // rebalance after semaphore weight is released
@@ -380,21 +397,12 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) RequestStatus {
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
 		task.StopNoUpload()
-		uploadFailure.WithLabelValues("XXX").Inc()
-		return RequestStatus{
-			Code: http.StatusInternalServerError,
-			Msg:  err.Error(),
-			Task: task,
-		}
+		return task, err
 	}
 
 	task.Stop()
 
-	return RequestStatus{
-		Code: http.StatusOK,
-		Msg:  "upload succeeded",
-		Task: task,
-	}
+	return task, nil
 }
 
 func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
@@ -467,13 +475,13 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 	defer file.Close()
 
 	maxAttempts := *h.conf.UploadTries
+attempts:
 	for task.Attempts = 1; task.Attempts <= maxAttempts; task.Attempts++ {
-		uploadAttempt.Inc()
+		uploadAttempts.Inc()
 		if task.Attempts > 1 {
-			uploadRetry.Inc()
+			uploadRetries.Inc()
 		}
 		uploadCtx, cancel := context.WithTimeoutCause(ctx, *h.conf.UploadTimeout, errUploadAttemptTimeout)
-		defer cancel()
 		_, err = h.uploader.Upload(uploadCtx, &s3.PutObjectInput{
 			Bucket: aws.String(*task.Bucket),
 			Key:    aws.String(*task.Key),
@@ -481,21 +489,23 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 		}, func(u *manager.Uploader) {
 			u.Concurrency = int(task.UploadParts) // 1 go routine per upload part
 		})
+		cancel()
 
 		var apiErr smithy.APIError
 		var errMsg string
 
 		switch {
 		case err == nil: // upload succeeded
-			break
+			break attempts
 		case gherrors.As(err, &apiErr):
 			// fail immediately if the bucket does not exist.  Retry all other s3 errors.
 			if apiErr.ErrorCode() == "NoSuchBucket" {
 				return errors.Join(errUploadNoSuchBucket, err)
 			}
 			errMsg = "s3 error"
-		case gherrors.Is(err, errUploadAttemptTimeout):
+		case gherrors.Is(context.Cause(uploadCtx), errUploadAttemptTimeout):
 			errMsg = "timeout"
+			err = errors.Join(errUploadAttemptTimeout, err)
 		case gherrors.Is(err, context.Canceled): // the client disconnected
 			return errors.Join(errUploadAborted, err)
 		default: // unknown error -- could be a server side
