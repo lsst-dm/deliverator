@@ -38,6 +38,7 @@ var (
 	errUploadAttemptTimeout = gherrors.New("upload attempt timeout")
 	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
 	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
+	errUploadNoSuchBucket   = gherrors.New("upload failed because the bucket does not exist")
 	uploadRequest           = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_requests_total",
@@ -480,39 +481,35 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 		}, func(u *manager.Uploader) {
 			u.Concurrency = int(task.UploadParts) // 1 go routine per upload part
 		})
-		if err != nil {
-			var apiErr smithy.APIError
 
-			switch {
-			case gherrors.As(err, &apiErr):
-				// fail immediately if the bucket does not exist.  Retry all other s3 gherrors.
-				if apiErr.ErrorCode() == "NoSuchBucket" {
-					return gherrors.Wrapf(err, "upload failed because the bucket %v does not exist", *task.Bucket)
-				}
-			case gherrors.Is(err, errUploadAttemptTimeout):
-				errMsg := fmt.Sprintf("upload attempt %v/%v timeout", task.Attempts, maxAttempts)
+		var apiErr smithy.APIError
+		var errMsg string
 
-				// bubble up the error if we've exhausted our attempts
-				if task.Attempts == maxAttempts {
-					return gherrors.Wrap(err, errMsg)
-				}
-				// otherwise, log the timeout and carry on
-				logger.Warn(errMsg, slog.Any("task", task))
-				continue
-			case gherrors.Is(err, context.Canceled):
-				// the parent context was cancelled
-				return errors.Join(errUploadAborted, err)
-			}
-
-			// unknown error -- could be a server side problem so could retry
-			errMsg := fmt.Sprintf("unknown error during upload attempt %v/%v", task.Attempts, maxAttempts)
-			if task.Attempts == maxAttempts {
-				return gherrors.Wrap(err, errMsg)
-			}
-			logger.Warn(errMsg, slog.Any("task", task))
-		} else {
+		switch {
+		case err == nil: // upload succeeded
 			break
+		case gherrors.As(err, &apiErr):
+			// fail immediately if the bucket does not exist.  Retry all other s3 errors.
+			if apiErr.ErrorCode() == "NoSuchBucket" {
+				return errors.Join(errUploadNoSuchBucket, err)
+			}
+			errMsg = "s3 error"
+		case gherrors.Is(err, errUploadAttemptTimeout):
+			errMsg = "timeout"
+		case gherrors.Is(err, context.Canceled): // the client disconnected
+			return errors.Join(errUploadAborted, err)
+		default: // unknown error -- could be a server side
+			errMsg = "unknown error"
 		}
+
+		errMsg = fmt.Sprintf("%s during upload attempt %v/%v", errMsg, task.Attempts, maxAttempts)
+
+		// bubble up the error if we've exhausted our attempts
+		if task.Attempts == maxAttempts {
+			return gherrors.Wrap(err, errMsg)
+		}
+		// otherwise, log the timeout and carry on
+		logger.Warn(errMsg, slog.Any("task", task))
 	}
 
 	return nil

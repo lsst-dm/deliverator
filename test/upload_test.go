@@ -168,6 +168,24 @@ var _ = Describe("POST /upload", func() {
 		})
 	})
 
+	When("bucket does not exist", func() {
+		PIt("returns 404", func() {
+			resp, err := http.PostForm(s3ndUrl.String()+"/upload",
+				url.Values{
+					"file": {f.Name()},
+					"uri":  {"s3://bucket-does-not-exist/" + testFile},
+					"slug": {"banana"},
+				})
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			status := upload.RequestStatus{}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &status)
+			Expect(status.Msg).To(ContainSubstring("upload failed because the bucket does not exist"))
+		})
+	})
+
 	When("client disconnects", func() {
 		It("aborts upload", func() {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(500*time.Microsecond))
