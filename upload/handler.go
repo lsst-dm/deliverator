@@ -57,6 +57,12 @@ var (
 		},
 		[]string{"code", "reason"},
 	)
+	uploadBytes = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_bytes_total",
+			Help: "number of bytes transferred for files which completed successfully",
+		},
+	)
 )
 
 type S3ndHandler struct {
@@ -291,6 +297,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case err == nil: // upload succeeded
 		code = http.StatusOK
 		msg = "upload succeeded"
+		uploadBytes.Add(float64(task.SizeBytes))
 	case gherrors.As(err, &badRequestErr):
 		// bad request, e.g. missing required fields
 		code = http.StatusBadRequest
