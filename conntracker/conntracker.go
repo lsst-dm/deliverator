@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,7 +21,8 @@ type ConnTracker struct {
 	mu               sync.Mutex
 	active           map[net.Conn]struct{}
 	tcpInfoSumClosed *unix.TCPInfo
-	closed           uint64 // number of closed connections
+	closed           uint64        // number of closed connections
+	uploadPace       atomic.Uint64 // pace in *bytes* per second for uploads
 }
 
 type ConnTrackerConnections struct {
@@ -39,6 +41,47 @@ func NewConnTracker(d *net.Dialer) *ConnTracker {
 	// t.startConnStats()
 
 	return t
+}
+
+// returns the current upload pacing rate in *bytes per second*.
+func (t *ConnTracker) PacingRate() uint64 {
+	return t.uploadPace.Load()
+}
+
+// returns the current upload pacing rate in *megabits per second*.
+func (t *ConnTracker) PacingRateMbits() float64 {
+	return float64(t.PacingRate()*8) / (1 << 20)
+}
+
+// sets the upload pacing rate in *bytes per second*. A value of 0 means
+// no pacing is applied.
+func (t *ConnTracker) SetPacingRate(pace uint64) error {
+	if pace == t.PacingRate() {
+		// no change, no need to do anything
+		return nil
+	}
+
+	t.uploadPace.Store(pace)
+
+	var e []error
+
+	t.Monkey(func(active map[net.Conn]struct{}) {
+		for conn := range active {
+			conn, ok := conn.(*trackedConn)
+			if !ok {
+				// conn is not a trackedConn, so we can't set the pacing rate
+				// this should not happen...
+				e = append(e, gherrors.New("conn is not a trackedConn"))
+				continue
+			}
+			if err := conn.setPacingRate(pace); err != nil {
+				e = append(e, err)
+				continue
+			}
+		}
+	})
+
+	return errors.Join(e...)
 }
 
 // Allow tinkering with the tracked active and idle pools. Not for the faint of
@@ -94,6 +137,10 @@ func (t *ConnTracker) DialContext(ctx context.Context, network, addr string) (ne
 	// Wrap the conn so we can see when the request finishes and
 	// the transport calls Close().
 	tConn := newTrackedConn(conn, t)
+
+	if t.PacingRate() > 0 {
+		return tConn, tConn.setPacingRate(t.PacingRate())
+	}
 
 	return tConn, nil
 }
@@ -250,4 +297,28 @@ func newTrackedConn(c net.Conn, tracker *ConnTracker) *trackedConn {
 func (tc *trackedConn) Close() error {
 	tc.once.Do(func() { tc.tracker.markClosed(tc.Conn) })
 	return tc.Conn.Close()
+}
+
+func (tc *trackedConn) setPacingRate(pace uint64) error {
+	// https://pkg.go.dev/syscall#RawConn
+	sc, ok := tc.Conn.(syscall.Conn)
+	if !ok {
+		return gherrors.New("unable to cast net.Conn to syscall.Conn")
+	}
+	rc, err := sc.SyscallConn()
+	if err != nil {
+		return gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
+	}
+	var operr error
+	if err := rc.Control(func(fd uintptr) {
+		// syscall.SetsockoptInt64 doesn't exist
+		operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(pace)) //gosec:disable G115
+	}); err != nil {
+		return err
+	}
+	if operr != nil {
+		return operr
+	}
+
+	return nil
 }

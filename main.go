@@ -42,7 +42,7 @@ func main() {
 
 	slog.Info("starting s3nd", "version", version.Version)
 
-	uHandler := upload.NewHandler(&conf)
+	uHandler := upload.NewS3ndHandler(&conf)
 
 	prometheus.MustRegister(collector.NewS3ndCollector(uHandler))
 

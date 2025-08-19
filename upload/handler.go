@@ -13,8 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/lsst-dm/s3nd/conf"
@@ -32,7 +30,6 @@ import (
 	gherrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -68,7 +65,6 @@ type S3ndHandler struct {
 	s3Client        *s3.Client
 	uploader        *manager.Uploader
 	parallelUploads semaphore.Semaphore
-	uploadPace      atomic.Int64 // pace in *bytes* per second for uploads
 	connTracker     *conntracker.ConnTracker
 }
 
@@ -82,14 +78,6 @@ func (h *S3ndHandler) Conf() *conf.S3ndConf {
 
 func (h *S3ndHandler) ParallelUploads() *semaphore.Semaphore {
 	return &h.parallelUploads
-}
-
-func (h *S3ndHandler) Pace() int64 {
-	return h.uploadPace.Load()
-}
-
-func (h *S3ndHandler) setPace(rate int64) {
-	h.uploadPace.Store(rate)
 }
 
 type UploadTask struct {
@@ -218,7 +206,7 @@ type requestStatusSwag504 struct {
 	} `json:"task,omitempty"`
 } //@name requestStatus504
 
-func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
+func NewS3ndHandler(conf *conf.S3ndConf) *S3ndHandler {
 	handler := &S3ndHandler{
 		conf: conf,
 	}
@@ -239,12 +227,7 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 		t.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	}
 
-	dialer := &net.Dialer{
-		ControlContext: func(ctx context.Context, network, address string, conn syscall.RawConn) error {
-			return setPacingRate(conn, handler.Pace())
-		},
-	}
-	handler.connTracker = conntracker.NewConnTracker(dialer)
+	handler.connTracker = conntracker.NewConnTracker(&net.Dialer{})
 
 	httpClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
 		defaultTransportOtptions(t)
@@ -274,6 +257,9 @@ func NewHandler(conf *conf.S3ndConf) *S3ndHandler {
 	})
 
 	handler.parallelUploads = semaphore.New(int(*conf.UploadMaxParallel))
+
+	// set the pacing rate before the first conn is established
+	handler.updatePacingRate()
 
 	return handler
 }
@@ -392,7 +378,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 			return task, err
 		}
 	}
-	defer h.updatePace() // rebalance after semaphore weight is released
+	defer h.updatePacingRate() // rebalance after semaphore weight is released
 	defer h.parallelUploads.Release(int(task.UploadParts))
 
 	logger.Info(
@@ -402,7 +388,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 
 	// set the packet pace when starting a new upload and after an upload is
 	// finished (successfully or not)
-	h.updatePace()
+	h.updatePacingRate()
 
 	if err := h.uploadFileMultipart(r.Context(), task); err != nil {
 		task.StopNoUpload()
@@ -536,13 +522,15 @@ attempts:
 
 // based on the number of active uploads, adjust the packet pacing rate on all
 // net.Conn's in the connection pool
-func (h *S3ndHandler) updatePace() {
-	bwLimitBytes := int64(h.conf.UploadBwlimit.Value() / 8)
+func (h *S3ndHandler) updatePacingRate() {
+	var targetPace uint64
+	bwLimitBytes := divCeil(h.conf.UploadBwlimit.Value(), 8)
+
 	// avoid div by zero
 	if h.parallelUploads.GetCount() == 0 {
-		h.setPace(bwLimitBytes)
+		targetPace = uint64(bwLimitBytes) //gosec:disable G115
 	} else {
-		h.setPace(bwLimitBytes / int64(h.parallelUploads.GetCount()))
+		targetPace = uint64(divCeil(bwLimitBytes, int64(h.parallelUploads.GetCount()))) //gosec:disable G115
 	}
 
 	if h.conf.UploadBwlimit.Value() == 0 {
@@ -553,46 +541,19 @@ func (h *S3ndHandler) updatePace() {
 		)
 		// noop if there is no upload bandwidth limit configured
 		return
-	} else {
-		paceMbits := float64(h.Pace()*8) / (1 << 20)
-		logger.Info(
-			"active uploads",
-			"uploads", h.parallelUploads.GetCount(),
-			"pace_mbits", paceMbits,
-		)
 	}
 
-	// there's no need to touch the socket options if there are no active uploads
-	if h.parallelUploads.GetCount() == 0 {
-		// stop after logging the updated pace
+	if err := h.connTracker.SetPacingRate(targetPace); err != nil {
+		logger.Error("unable to set pacing rate", slog.Any("error", err))
 		return
 	}
 
-	h.connTracker.Monkey(func(active map[net.Conn]struct{}) {
-		updateConn := func(c net.Conn) error {
-			sc, ok := c.(syscall.Conn)
-			if !ok {
-				return gherrors.New("unable to cast net.Conn to syscall.Conn")
-			}
-			rc, err := sc.SyscallConn()
-			if err != nil {
-				return gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
-			}
-
-			err = setPacingRate(rc, h.Pace())
-			if err != nil {
-				return gherrors.Wrap(err, "unable to set SO_MAX_PACING_RATE on net.Conn")
-			}
-
-			return nil
-		}
-
-		for conn := range active {
-			if err := updateConn(conn); err != nil {
-				panic(gherrors.Wrap(err, "unable to update connection pacing rate"))
-			}
-		}
-	})
+	logger.Info(
+		"active uploads",
+		"uploads", h.parallelUploads.GetCount(),
+		"pace_mbits", h.connTracker.PacingRateMbits(),
+		"pace_bytes", h.connTracker.PacingRate(),
+	)
 }
 
 func divCeil(a, b int64) int64 {
@@ -600,20 +561,4 @@ func divCeil(a, b int64) int64 {
 		panic("division by zero")
 	}
 	return (a + b - 1) / b // rounds up
-}
-
-func setPacingRate(conn syscall.RawConn, pace int64) error {
-	// https://pkg.go.dev/syscall#RawConn
-	var operr error
-	if err := conn.Control(func(fd uintptr) {
-		// syscall.SetsockoptInt64 doesn't exist
-		operr = syscall.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MAX_PACING_RATE, int(pace))
-	}); err != nil {
-		return err
-	}
-	if operr != nil {
-		return operr
-	}
-
-	return nil
 }
