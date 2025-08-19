@@ -52,8 +52,8 @@ var (
 	)
 	uploadRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "s3nd_upload_requests_total",
-			Help: "number of uploads which failed to complete",
+			Name: "s3nd_upload_http_requests_total",
+			Help: "http status codes returned to the client",
 		},
 		[]string{"code", "reason"},
 	)
