@@ -257,19 +257,17 @@ var _ = Describe("client.Upload", func() {
 		task := status.Task
 		Expect(task.Id).ToNot(BeEmpty())
 		Expect(task.Uri).To(Equal(&upload.RequestURL{URL: uri}))
-		Expect(task.Bucket).To(BeNil()) // unset
-		Expect(task.Key).To(BeNil())    // unset
 		Expect(task.File).To(Equal(&file))
-		Expect(task.StartTime.IsZero()).To(BeTrue()) // unset
-		Expect(task.EndTime.IsZero()).To(BeTrue())   // unset
-		Expect(task.Duration).ToNot(BeEmpty())
-		Expect(task.DurationSeconds).ToNot(BeZero())
-		Expect(task.Attempts).To(Equal(1))
-		Expect(task.SizeBytes).ToNot(BeZero())
-		Expect(task.UploadParts).To(Equal(int64(1)))
-		Expect(task.TransferRate).ToNot(BeEmpty())
-		Expect(task.TransferRateMbits).ToNot(BeZero())
 		Expect(task.Slug).To(Equal(&slug))
+		Expect(task.UploadTotal).ToNot(BeEmpty()) // human friendly
+		Expect(task.UploadTotalSeconds).ToNot(BeZero())
+		Expect(task.UploadQueuedSeconds).To(BeZero())
+		Expect(task.UploadTransferSeconds).ToNot(BeZero())
+		Expect(task.UploadAttempts).To(Equal(1))
+		Expect(task.UploadSizeBytes).ToNot(BeZero())
+		Expect(task.UploadParts).To(Equal(int64(1)))
+		Expect(task.UploadTransferRate).ToNot(BeEmpty()) // human friendly
+		Expect(task.UploadTransferRateBytes).ToNot(BeZero())
 	})
 })
 
@@ -335,19 +333,17 @@ var _ = Describe("client.UploadMulti", func() {
 			task := uStatus.RequestStatus.Task
 			Expect(task.Id).ToNot(BeEmpty())
 			Expect(task.Uri).ToNot(BeNil())
-			Expect(task.Bucket).To(BeNil()) // unset
-			Expect(task.Key).To(BeNil())    // unset
 			Expect(task.File).ToNot(BeNil())
-			Expect(task.StartTime).To(Equal(time.Time{})) // unset
-			Expect(task.EndTime).To(Equal(time.Time{}))   // unset
-			Expect(task.Duration).ToNot(BeEmpty())
-			Expect(task.DurationSeconds).ToNot(BeZero())
-			Expect(task.Attempts).To(Equal(1))
-			Expect(task.SizeBytes).ToNot(BeZero())
-			Expect(task.UploadParts).To(Equal(int64(1)))
-			Expect(task.TransferRate).ToNot(BeEmpty())
-			Expect(task.TransferRateMbits).ToNot(BeZero())
 			Expect(task.Slug).To(Equal(&slug))
+			Expect(task.UploadTotal).ToNot(BeEmpty()) // human friendly
+			Expect(task.UploadTotalSeconds).ToNot(BeZero())
+			Expect(task.UploadQueuedSeconds).To(BeZero())
+			Expect(task.UploadTransferSeconds).ToNot(BeZero())
+			Expect(task.UploadAttempts).To(Equal(1))
+			Expect(task.UploadSizeBytes).ToNot(BeZero())
+			Expect(task.UploadParts).To(Equal(int64(1)))
+			Expect(task.UploadTransferRate).ToNot(BeEmpty()) // human friendly
+			Expect(task.UploadTransferRateBytes).ToNot(BeZero())
 		}
 	})
 })
