@@ -77,6 +77,15 @@ var (
 		},
 		[]string{"code", "reason"},
 	)
+	uploadTimes = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:                           "s3nd_upload_times_seconds",
+			Help:                           "histogram of upload times in seconds",
+			NativeHistogramBucketFactor:    1.5,
+			NativeHistogramZeroThreshold:   0,
+			NativeHistogramMaxBucketNumber: 200,
+		},
+	)
 )
 
 type S3ndHandler struct {
@@ -323,6 +332,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		code = http.StatusOK
 		msg = "upload succeeded"
 		uploadBytes.Add(float64(task.SizeBytes))
+		uploadTimes.Observe(task.DurationSeconds)
 	case gherrors.As(err, &badRequestErr):
 		// bad request, e.g. missing required fields
 		code = http.StatusBadRequest
