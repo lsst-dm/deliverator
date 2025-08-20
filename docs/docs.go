@@ -192,10 +192,6 @@ const docTemplate = `{
                 "task": {
                     "type": "object",
                     "properties": {
-                        "duration": {
-                            "type": "string",
-                            "example": "37.921µs"
-                        },
                         "file": {
                             "type": "string",
                             "example": "/path/to/file.txt"
@@ -263,15 +259,8 @@ const docTemplate = `{
                             "type": "integer",
                             "example": 5
                         },
-                        "duration": {
-                            "type": "string",
-                            "example": "37.921µs"
-                        },
-                        "duration_seconds": {
-                            "type": "number",
-                            "example": 0.021
-                        },
                         "file": {
+                            "description": "request input",
                             "type": "string",
                             "example": "/path/to/file.txt"
                         },
@@ -279,29 +268,51 @@ const docTemplate = `{
                             "type": "string",
                             "format": "uuid"
                         },
-                        "size_bytes": {
-                            "type": "integer",
-                            "example": 1000
-                        },
                         "slug": {
-                            "description": "for logging",
+                            "description": "request input; for logging",
                             "type": "string",
                             "example": "Gray Garden Slug"
                         },
-                        "transfer_rate": {
-                            "description": "human friendly",
-                            "type": "string",
-                            "example": "1000B/s"
-                        },
-                        "transfer_rate_mbits": {
-                            "type": "number",
-                            "example": 0.001
+                        "upload_attempts": {
+                            "type": "integer",
+                            "example": 1
                         },
                         "upload_parts": {
                             "type": "integer",
                             "example": 1
                         },
+                        "upload_queued_seconds": {
+                            "type": "number",
+                            "example": 0.021
+                        },
+                        "upload_rate": {
+                            "description": "human friendly",
+                            "type": "string",
+                            "example": "42Mbit/s"
+                        },
+                        "upload_rate_bytes": {
+                            "type": "number",
+                            "example": 796.178343
+                        },
+                        "upload_size_bytes": {
+                            "type": "integer",
+                            "example": 1000
+                        },
+                        "upload_total": {
+                            "description": "human friendly",
+                            "type": "string",
+                            "example": "21.916462ms"
+                        },
+                        "upload_total_seconds": {
+                            "type": "number",
+                            "example": 1.255
+                        },
+                        "upload_transfer_seconds": {
+                            "type": "number",
+                            "example": 1.234
+                        },
                         "uri": {
+                            "description": "request input",
                             "type": "string",
                             "example": "s3://my-bucket/my-key"
                         }
@@ -323,10 +334,6 @@ const docTemplate = `{
                 "task": {
                     "type": "object",
                     "properties": {
-                        "duration": {
-                            "type": "string",
-                            "example": "56.115µs"
-                        },
                         "file": {
                             "type": "string",
                             "example": "/path/to/file.txt"
@@ -351,20 +358,8 @@ const docTemplate = `{
         "task": {
             "type": "object",
             "properties": {
-                "attempts": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "duration": {
-                    "description": "human friendly",
-                    "type": "string",
-                    "example": "21.916462ms"
-                },
-                "duration_seconds": {
-                    "type": "number",
-                    "example": 0.021
-                },
                 "file": {
+                    "description": "request input",
                     "type": "string",
                     "example": "/path/to/file.txt"
                 },
@@ -372,29 +367,51 @@ const docTemplate = `{
                     "type": "string",
                     "format": "uuid"
                 },
-                "size_bytes": {
-                    "type": "integer",
-                    "example": 1000
-                },
                 "slug": {
-                    "description": "for logging",
+                    "description": "request input; for logging",
                     "type": "string",
                     "example": "Gray Garden Slug"
                 },
-                "transfer_rate": {
-                    "description": "human friendly",
-                    "type": "string",
-                    "example": "1000B/s"
-                },
-                "transfer_rate_mbits": {
-                    "type": "number",
-                    "example": 0.001
+                "upload_attempts": {
+                    "type": "integer",
+                    "example": 1
                 },
                 "upload_parts": {
                     "type": "integer",
                     "example": 1
                 },
+                "upload_queued_seconds": {
+                    "type": "number",
+                    "example": 0.021
+                },
+                "upload_rate": {
+                    "description": "human friendly",
+                    "type": "string",
+                    "example": "42Mbit/s"
+                },
+                "upload_rate_bytes": {
+                    "type": "number",
+                    "example": 796.178343
+                },
+                "upload_size_bytes": {
+                    "type": "integer",
+                    "example": 1000
+                },
+                "upload_total": {
+                    "description": "human friendly",
+                    "type": "string",
+                    "example": "21.916462ms"
+                },
+                "upload_total_seconds": {
+                    "type": "number",
+                    "example": 1.255
+                },
+                "upload_transfer_seconds": {
+                    "type": "number",
+                    "example": 1.234
+                },
                 "uri": {
+                    "description": "request input",
                     "type": "string",
                     "example": "s3://my-bucket/my-key"
                 }

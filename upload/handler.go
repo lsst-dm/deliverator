@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/lsst-dm/deliverator/conf"
@@ -34,54 +35,108 @@ import (
 )
 
 var (
-	logger                  = slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	errUploadAttemptTimeout = gherrors.New("upload attempt timeout")
-	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
-	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
-	errUploadNoSuchBucket   = gherrors.New("upload failed because the bucket does not exist")
-	registry                = prometheus.NewRegistry()
-	uploadValid             = promauto.With(registry).NewCounter(
+	logger                   = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	errUploadAttemptTimeout  = gherrors.New("upload attempt timeout")
+	errUploadQueueTimeout    = gherrors.New("upload queue timeout")
+	errUploadAborted         = gherrors.New("upload request aborted because the client disconnected")
+	errUploadNoSuchBucket    = gherrors.New("upload failed because the bucket does not exist")
+	registry                 = prometheus.NewRegistry()
+	uploadValidRequestsTotal = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_valid_requests_total",
 			Help: "the number of valid upload requests",
 		},
 	)
-	uploadAttempts = promauto.With(registry).NewCounter(
+	uploadAttemptsTotal = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_attempts_total",
 			Help: "number of attempts to upload a file",
 		},
 	)
-	uploadRetries = promauto.With(registry).NewCounter(
+	uploadRetriesTotal = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_retries_total",
 			Help: "number of attempts to upload a file after a failure",
 		},
 	)
-	uploadRequests = promauto.With(registry).NewCounterVec(
+	uploadRequestsTotal = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_http_requests_total",
 			Help: "http status codes returned to the client",
 		},
 		[]string{"code", "reason"},
 	)
-	uploadBytes = promauto.With(registry).NewCounter(
+	uploadBytesTotal = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_bytes_total",
 			Help: "number of bytes transferred for files which completed successfully",
 		},
 	)
-	s3HTTPResponses = promauto.With(registry).NewCounterVec(
+	s3HTTPResponsesTotal = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_s3_http_responses_total",
 			Help: "http status codes returned by the s3 service",
 		},
 		[]string{"code", "reason"},
 	)
-	s3APIErrors = promauto.With(registry).NewCounterVec(
+	s3APIErrorsTotal = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_s3_api_errors_total",
 			Help: "api status codes returned by the s3 service",
+		},
+		[]string{"code", "reason"},
+	)
+	uploadTotalSeconds = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_total_seconds",
+			Help:                            "histogram of upload transfer durations in seconds, including time queued and time spent retrying",
+			NativeHistogramBucketFactor:     1.026,  // ~195 buckets for 200ms-30s
+			NativeHistogramZeroThreshold:    0.0005, // ms resolution
+			NativeHistogramMaxBucketNumber:  200,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+		[]string{"code", "reason"},
+	)
+	uploadQueuedSeconds = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_queued_seconds",
+			Help:                            "histogram of upload queue duration in seconds.",
+			NativeHistogramBucketFactor:     1.026,  // ~195 buckets for 200ms-30s
+			NativeHistogramZeroThreshold:    0.0005, // ms resolution
+			NativeHistogramMaxBucketNumber:  200,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+		[]string{"code", "reason"},
+	)
+	uploadTransferSeconds = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_transfer_seconds",
+			Help:                            "histogram of upload transfer durations in seconds, including time spent retrying",
+			NativeHistogramBucketFactor:     1.026,  // ~195 buckets for 200ms-30s
+			NativeHistogramZeroThreshold:    0.0005, // ms resolution
+			NativeHistogramMaxBucketNumber:  200,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+		[]string{"code", "reason"},
+	)
+	uploadTransferRateBytes = promauto.With(registry).NewHistogram(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_transfer_rate_bytes",
+			Help:                            "histogram of upload transfer data rate in bytes per seconds, including time spent retrying. Only successful uploads are counted.",
+			NativeHistogramBucketFactor:     1.073, // ~200 buckets for 1Kib/s-10Gib/s
+			NativeHistogramZeroThreshold:    64,    // 1/2 of 1Kib/s
+			NativeHistogramMaxBucketNumber:  200,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+	)
+	uploadTransferSizeBytes = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_transfer_size_bytes",
+			Help:                            "histogram of upload file sizes in bytes.",
+			NativeHistogramBucketFactor:     1.07152, // ~200 buckets for 100b-100MiB
+			NativeHistogramZeroThreshold:    50,      // 1/2 of 100b
+			NativeHistogramMaxBucketNumber:  200,
+			NativeHistogramMinResetDuration: time.Hour,
 		},
 		[]string{"code", "reason"},
 	)
@@ -115,45 +170,70 @@ func (h *S3ndHandler) Registry() *prometheus.Registry {
 }
 
 type UploadTask struct {
-	Id                uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-	Uri               *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
-	Bucket            *string     `json:"-"`
-	Key               *string     `json:"-"`
-	File              *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
-	StartTime         time.Time   `json:"-"`
-	EndTime           time.Time   `json:"-"`
-	Duration          string      `json:"duration,omitempty" example:"21.916462ms"` // human friendly
-	DurationSeconds   float64     `json:"duration_seconds,omitzero" example:"0.021"`
-	Attempts          int         `json:"attempts,omitzero" example:"1"`
-	SizeBytes         int64       `json:"size_bytes" example:"1000"`
-	UploadParts       int64       `json:"upload_parts,omitempty" example:"1"`
-	TransferRate      string      `json:"transfer_rate,omitempty" example:"1000B/s"` // human friendly
-	TransferRateMbits float64     `json:"transfer_rate_mbits,omitzero" example:"0.001"`
-	Slug              *string     `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
+	Id                      uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+	Uri                     *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"` // request input
+	File                    *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`    // request input
+	Slug                    *string     `json:"slug,omitempty" example:"Gray Garden Slug"`                          // request input; for logging
+	UploadTotal             string      `json:"upload_total,omitempty" example:"21.916462ms"`                       // human friendly
+	UploadTotalSeconds      float64     `json:"upload_total_seconds,omitzero" example:"1.255"`
+	UploadQueuedSeconds     float64     `json:"upload_queued_seconds,omitzero" example:"0.021"`
+	UploadTransferSeconds   float64     `json:"upload_transfer_seconds,omitzero" example:"1.234"`
+	UploadAttempts          int         `json:"upload_attempts,omitzero" example:"1"`
+	UploadSizeBytes         int64       `json:"upload_size_bytes" example:"1000"`
+	UploadTransferRate      string      `json:"upload_rate,omitempty" example:"42Mbit/s"` // human friendly
+	UploadTransferRateBytes float64     `json:"upload_rate_bytes,omitzero" example:"796.178343"`
+	UploadParts             int64       `json:"upload_parts,omitempty" example:"1"`
+	bucket                  *string     // computed from Uri
+	key                     *string     // computed from Uri
+	startTime               time.Time   // start of request
+	transferStartTime       time.Time   // start of attempting to transfer data
+	endTime                 time.Time   // time request completed: success or failure
+	uploadQueued            atomic.Bool // true if the upload had to wait for an upload slot
 } //@name task
 
 func NewUploadTask(startTime time.Time) *UploadTask {
 	return &UploadTask{
 		Id:        uuid.New(),
-		StartTime: startTime,
+		startTime: startTime,
 	}
+}
+
+// the task is ready to start attempting to transferring data
+func (t *UploadTask) StartTransfer() {
+	t.transferStartTime = time.Now()
 }
 
 // the task is stopped because of an error and no data was sent
 func (t *UploadTask) StopNoUpload() {
 	t.Stop()
-	// no transfer rate if we didn't start the upload
-	t.TransferRate = ""
-	t.TransferRateMbits = 0
+	// no reported transfer rate if the upload never started or failed
+	t.UploadTransferRateBytes = 0
+	t.UploadTransferRate = ""
 }
 
 func (t *UploadTask) Stop() {
-	t.EndTime = time.Now()
-	duration := t.EndTime.Sub(t.StartTime)
-	t.DurationSeconds = duration.Seconds()
-	t.Duration = duration.String()
-	t.TransferRateMbits = float64(t.SizeBytes*8) / duration.Seconds() / (1 << 20)
-	t.TransferRate = fmt.Sprintf("%.3fMbit/s", t.TransferRateMbits)
+	t.endTime = time.Now()
+
+	totalDuration := t.endTime.Sub(t.startTime)
+	t.UploadTotalSeconds = totalDuration.Seconds()
+	t.UploadTotal = totalDuration.String() // human friendly
+
+	// only compute a non-zero queued duration if the upload was queued
+	if t.uploadQueued.Load() && !t.transferStartTime.IsZero() {
+		// request was queued and the upload at least started
+		t.UploadQueuedSeconds = t.transferStartTime.Sub(t.startTime).Seconds()
+	} else if t.uploadQueued.Load() && t.transferStartTime.IsZero() {
+		// request was queued but the upload never started
+		t.UploadQueuedSeconds = t.UploadTotalSeconds
+	}
+
+	if !t.transferStartTime.IsZero() {
+		// only compute a non-zero transfer duration if the upload started
+		t.UploadTransferSeconds = t.UploadTotalSeconds - t.UploadQueuedSeconds
+
+		t.UploadTransferRateBytes = float64(t.UploadSizeBytes) / t.UploadTransferSeconds
+		t.UploadTransferRate = fmt.Sprintf("%.3fMbit/s", (t.UploadTransferRateBytes*8)/(1<<20)) // human friendly
+	}
 }
 
 type RequestURL struct{ url.URL }
@@ -185,10 +265,9 @@ type requestStatusSwag400 struct {
 	Code int    `json:"code" example:"400"`
 	Msg  string `json:"msg,omitempty" example:"error parsing request: missing field: uri"`
 	Task *struct {
-		Id       uuid.UUID `json:"id" swaggertype:"string" format:"uuid"`
-		File     *string   `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
-		Duration string    `json:"duration,omitempty" example:"37.921µs"`
-		Slug     string    `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
+		Id   uuid.UUID `json:"id" swaggertype:"string" format:"uuid"`
+		File *string   `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+		Slug string    `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
 	} `json:"task,omitempty"`
 } //@name requestStatus400
 
@@ -219,8 +298,7 @@ type requestStatusSwag500 struct {
 	Msg  string `json:"msg,omitempty" example:"unknown error"`
 	Task *struct {
 		UploadTask
-		Duration string `json:"duration,omitempty" example:"37.921µs"`
-		Attempts int    `json:"attempts,omitzero" example:"5"`
+		Attempts int `json:"attempts,omitzero" example:"5"`
 	} `json:"task,omitempty"`
 } //@name requestStatus500
 
@@ -232,11 +310,10 @@ type requestStatusSwag504 struct {
 	Code int    `json:"code" example:"504"`
 	Msg  string `json:"msg,omitempty" example:"timeout during upload attempt 2/2"`
 	Task *struct {
-		Id       uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
-		Uri      *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
-		File     *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
-		Duration string      `json:"duration,omitempty" example:"56.115µs"`
-		Slug     string      `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
+		Id   uuid.UUID   `json:"id" swaggertype:"string" format:"uuid"`
+		Uri  *RequestURL `json:"uri,omitempty" swaggertype:"string" example:"s3://my-bucket/my-key"`
+		File *string     `json:"file,omitempty" swaggertype:"string" example:"/path/to/file.txt"`
+		Slug string      `json:"slug,omitempty" example:"Gray Garden Slug"` // for logging
 	} `json:"task,omitempty"`
 } //@name requestStatus504
 
@@ -324,11 +401,11 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	awsError := func(err error) {
 		if gherrors.As(err, &smithyAPIErr) {
-			s3APIErrors.WithLabelValues(smithyAPIErr.ErrorCode(), smithyAPIErr.ErrorMessage()).Inc()
+			s3APIErrorsTotal.WithLabelValues(smithyAPIErr.ErrorCode(), smithyAPIErr.ErrorMessage()).Inc()
 		}
 		if gherrors.As(err, &awsHTTPError) {
 			awsCode := awsHTTPError.HTTPStatusCode()
-			s3HTTPResponses.WithLabelValues(strconv.Itoa(awsCode), http.StatusText(awsCode)).Inc()
+			s3HTTPResponsesTotal.WithLabelValues(strconv.Itoa(awsCode), http.StatusText(awsCode)).Inc()
 		}
 	}
 
@@ -336,7 +413,8 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case err == nil: // upload succeeded
 		code = http.StatusOK
 		msg = "upload succeeded"
-		uploadBytes.Add(float64(task.SizeBytes))
+		uploadBytesTotal.Add(float64(task.UploadSizeBytes))
+		uploadTransferRateBytes.Observe(task.UploadTransferRateBytes)
 	case gherrors.As(err, &badRequestErr):
 		// bad request, e.g. missing required fields
 		code = http.StatusBadRequest
@@ -366,7 +444,16 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		msg = err.Error()
 	}
 
-	uploadRequests.WithLabelValues(strconv.Itoa(code), http.StatusText(code)).Inc()
+	{
+		codeText := strconv.Itoa(code)
+		statusText := http.StatusText(code)
+
+		uploadRequestsTotal.WithLabelValues(codeText, statusText).Inc()
+		uploadTotalSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTotalSeconds)
+		uploadQueuedSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadQueuedSeconds)
+		uploadTransferSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTransferSeconds)
+		uploadTransferSizeBytes.WithLabelValues(codeText, statusText).Observe(float64(task.UploadSizeBytes))
+	}
 
 	status := RequestStatus{
 		Code: code,
@@ -382,7 +469,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		logLevel = slog.LevelError
 	} else {
 		// assume there was an http 200 response from s3
-		s3HTTPResponses.WithLabelValues(strconv.Itoa(code), http.StatusText(code)).Inc()
+		s3HTTPResponsesTotal.WithLabelValues(strconv.Itoa(code), http.StatusText(code)).Inc()
 	}
 
 	logger.Log(
@@ -407,7 +494,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 		return task, err
 	}
 
-	uploadValid.Inc()
+	uploadValidRequestsTotal.Inc()
 	logger.Info(
 		"new upload request",
 		slog.Any("task", task),
@@ -416,6 +503,8 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 	// limit the number of parallel uploads
 	{
 		logWait := func(ctx context.Context) error {
+			task.uploadQueued.Store(true)
+
 			logger.Info(
 				"upload queued, waiting for upload slot(s)",
 				slog.Any("task", task),
@@ -443,6 +532,8 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 	}
 	defer h.updatePacingRate() // rebalance after semaphore weight is released
 	defer h.parallelUploads.Release(int(task.UploadParts))
+
+	task.StartTransfer()
 
 	logger.Info(
 		"upload starting",
@@ -500,8 +591,8 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 		key := uri.Path[1:] // Remove leading slash
 
 		task.Uri = &RequestURL{*uri}
-		task.Bucket = &bucket
-		task.Key = &key
+		task.bucket = &bucket
+		task.key = &key
 	}
 
 	{
@@ -518,9 +609,9 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	if err != nil {
 		return badrequesterror.Wrap(err, "could not stat file: %q", *task.File)
 	}
-	task.SizeBytes = fStat.Size()
+	task.UploadSizeBytes = fStat.Size()
 	// if the file is empty, we still need to upload it, so set the part size to 1
-	task.UploadParts = max(util.DivCeil(task.SizeBytes, h.conf.UploadPartsize.Value()), 1)
+	task.UploadParts = max(util.DivCeil(task.UploadSizeBytes, h.conf.UploadPartsize.Value()), 1)
 
 	return nil
 }
@@ -534,15 +625,15 @@ func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask)
 
 	maxAttempts := *h.conf.UploadTries
 attempts:
-	for task.Attempts = 1; task.Attempts <= maxAttempts; task.Attempts++ {
-		uploadAttempts.Inc()
-		if task.Attempts > 1 {
-			uploadRetries.Inc()
+	for task.UploadAttempts = 1; task.UploadAttempts <= maxAttempts; task.UploadAttempts++ {
+		uploadAttemptsTotal.Inc()
+		if task.UploadAttempts > 1 {
+			uploadRetriesTotal.Inc()
 		}
 		uploadCtx, cancel := context.WithTimeoutCause(ctx, *h.conf.UploadTimeout, errUploadAttemptTimeout)
 		_, err = h.uploader.Upload(uploadCtx, &s3.PutObjectInput{
-			Bucket: aws.String(*task.Bucket),
-			Key:    aws.String(*task.Key),
+			Bucket: aws.String(*task.bucket),
+			Key:    aws.String(*task.key),
 			Body:   file,
 		}, func(u *manager.Uploader) {
 			u.Concurrency = int(task.UploadParts) // 1 go routine per upload part
@@ -570,10 +661,10 @@ attempts:
 			errMsg = "unknown error"
 		}
 
-		errMsg = fmt.Sprintf("%s during upload attempt %v/%v", errMsg, task.Attempts, maxAttempts)
+		errMsg = fmt.Sprintf("%s during upload attempt %v/%v", errMsg, task.UploadAttempts, maxAttempts)
 
 		// bubble up the error if we've exhausted our attempts
-		if task.Attempts == maxAttempts {
+		if task.UploadAttempts == maxAttempts {
 			return gherrors.Wrap(err, errMsg)
 		}
 		// otherwise, log the timeout and carry on
