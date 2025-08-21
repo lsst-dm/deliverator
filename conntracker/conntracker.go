@@ -130,13 +130,13 @@ func (t *ConnTracker) DialContext(ctx context.Context, network, addr string) (ne
 		return nil, err
 	}
 
-	t.mu.Lock()
-	t.active[conn] = struct{}{}
-	t.mu.Unlock()
-
 	// Wrap the conn so we can see when the request finishes and
 	// the transport calls Close().
 	tConn := newTrackedConn(conn, t)
+
+	t.mu.Lock()
+	t.active[tConn] = struct{}{}
+	t.mu.Unlock()
 
 	if t.PacingRate() > 0 {
 		return tConn, tConn.setPacingRate(t.PacingRate())
