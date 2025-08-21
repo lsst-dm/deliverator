@@ -75,6 +75,30 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/requestStatus404"
+                        },
+                        "headers": {
+                            "X-Error": {
+                                "type": "string",
+                                "description": "error message"
+                            }
+                        }
+                    },
+                    "408": {
+                        "description": "Request Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/requestStatus408"
+                        },
+                        "headers": {
+                            "X-Error": {
+                                "type": "string",
+                                "description": "error message"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -189,6 +213,38 @@ const docTemplate = `{
                 }
             }
         },
+        "requestStatus404": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 404
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "upload failed because the bucket does not exist"
+                },
+                "task": {
+                    "$ref": "#/definitions/task"
+                }
+            }
+        },
+        "requestStatus408": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 408
+                },
+                "msg": {
+                    "type": "string",
+                    "example": "upload queue timeout"
+                },
+                "task": {
+                    "$ref": "#/definitions/task"
+                }
+            }
+        },
         "requestStatus500": {
             "type": "object",
             "properties": {
@@ -198,7 +254,7 @@ const docTemplate = `{
                 },
                 "msg": {
                     "type": "string",
-                    "example": "upload attempt 5/5 timeout: operation error S3: PutObject, context deadline exceeded"
+                    "example": "unknown error"
                 },
                 "task": {
                     "type": "object",
@@ -262,7 +318,7 @@ const docTemplate = `{
                 },
                 "msg": {
                     "type": "string",
-                    "example": "upload queue timeout: context deadline exceeded"
+                    "example": "timeout during upload attempt 2/2"
                 },
                 "task": {
                     "type": "object",

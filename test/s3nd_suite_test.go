@@ -2,6 +2,7 @@ package s3nd_test
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -12,10 +13,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/gexec"
 
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/onsi/gomega/gbytes"
+	"github.com/onsi/gomega/gexec"
 	"github.com/testcontainers/testcontainers-go"
 	tcminio "github.com/testcontainers/testcontainers-go/modules/minio"
 )
@@ -29,8 +31,9 @@ var (
 		Scheme: "http",
 		Host:   s3ndHost + ":" + s3ndPort,
 	} // URL for s3nd
-	s3ndBucket = "test"      // pre-created bucket used for testing
-	s3         *minio.Client // MinIO client to interact with the test bucket
+	s3ndBucket = "test"             // pre-created bucket used for testing
+	s3         *minio.Client        // MinIO client to interact with the test bucket
+	s3ndOutput = gbytes.NewBuffer() // console output
 )
 
 func TestS3nd(t *testing.T) {
@@ -80,8 +83,11 @@ var _ = SynchronizedBeforeSuite(func() {
 		"S3ND_ENDPOINT_URL=http://"+endpoint,
 		"S3ND_HOST="+s3ndHost,
 		"S3ND_PORT="+s3ndPort,
+		"S3ND_UPLOAD_BWLIMIT=1",
 	)
-	s3ndCmd.Stdout, s3ndCmd.Stderr = GinkgoWriter, GinkgoWriter
+	s3ndCmd.Stdout = io.MultiWriter(GinkgoWriter, s3ndOutput)
+	s3ndCmd.Stderr = io.MultiWriter(GinkgoWriter, s3ndOutput)
+	// gexec.Start() would sigsegv, had to use exec.Command directly
 	Expect(s3ndCmd.Start()).To(Succeed())
 
 	// wait until s3nd is listening

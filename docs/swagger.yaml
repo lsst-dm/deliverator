@@ -45,14 +45,35 @@ definitions:
             type: string
         type: object
     type: object
+  requestStatus404:
+    properties:
+      code:
+        example: 404
+        type: integer
+      msg:
+        example: upload failed because the bucket does not exist
+        type: string
+      task:
+        $ref: '#/definitions/task'
+    type: object
+  requestStatus408:
+    properties:
+      code:
+        example: 408
+        type: integer
+      msg:
+        example: upload queue timeout
+        type: string
+      task:
+        $ref: '#/definitions/task'
+    type: object
   requestStatus500:
     properties:
       code:
         example: 500
         type: integer
       msg:
-        example: 'upload attempt 5/5 timeout: operation error S3: PutObject, context
-          deadline exceeded'
+        example: unknown error
         type: string
       task:
         properties:
@@ -99,7 +120,7 @@ definitions:
         example: 504
         type: integer
       msg:
-        example: 'upload queue timeout: context deadline exceeded'
+        example: timeout during upload attempt 2/2
         type: string
       task:
         properties:
@@ -204,6 +225,22 @@ paths:
               type: string
           schema:
             $ref: '#/definitions/requestStatus400'
+        "404":
+          description: Not Found
+          headers:
+            X-Error:
+              description: error message
+              type: string
+          schema:
+            $ref: '#/definitions/requestStatus404'
+        "408":
+          description: Request Timeout
+          headers:
+            X-Error:
+              description: error message
+              type: string
+          schema:
+            $ref: '#/definitions/requestStatus408'
         "500":
           description: Internal Server Error
           headers:
