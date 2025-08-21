@@ -11,7 +11,7 @@ const docTemplate = `{
         "title": "{{.Title}}",
         "contact": {
             "name": "Support",
-            "url": "https://github.com/lsst-dm/s3nd"
+            "url": "https://github.com/lsst-dm/deliverator"
         },
         "license": {
             "name": "GPL-3.0",

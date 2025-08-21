@@ -80,7 +80,7 @@ jobs:
   oci_image:
     name: Build OCI Image
     needs: build
-    if: github.repository == 'lsst-dm/s3nd'
+    if: github.repository == 'lsst-dm/deliverator'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.pick.outputs.tag }}

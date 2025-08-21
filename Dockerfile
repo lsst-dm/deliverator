@@ -5,11 +5,11 @@ RUN apk --update --no-cache add \
     make \
     git \
     && rm -rf /root/.cache
-WORKDIR /go/src/github.com/lsst-dm/s3nd
+WORKDIR /go/src/github.com/lsst-dm/deliverator
 COPY . .
 RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4 && make build
 
 FROM alpine:3
 WORKDIR /root/
-COPY --from=builder /go/src/github.com/lsst-dm/s3nd/s3nd /bin/s3nd
+COPY --from=builder /go/src/github.com/lsst-dm/deliverator/s3nd /bin/s3nd
 ENTRYPOINT ["/bin/s3nd"]

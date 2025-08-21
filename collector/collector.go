@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/lsst-dm/s3nd/upload"
+	"github.com/lsst-dm/deliverator/upload"
 )
 
 type S3ndCollector struct {

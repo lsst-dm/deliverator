@@ -15,10 +15,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lsst-dm/s3nd/conf"
-	"github.com/lsst-dm/s3nd/conntracker"
-	"github.com/lsst-dm/s3nd/semaphore"
-	"github.com/lsst-dm/s3nd/upload/badrequesterror"
+	"github.com/lsst-dm/deliverator/conf"
+	"github.com/lsst-dm/deliverator/conntracker"
+	"github.com/lsst-dm/deliverator/semaphore"
+	"github.com/lsst-dm/deliverator/upload/badrequesterror"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"

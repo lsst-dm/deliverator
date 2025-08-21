@@ -70,7 +70,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	}
 
 	// build s3nd
-	bin, err := gexec.Build("github.com/lsst-dm/s3nd")
+	bin, err := gexec.Build("github.com/lsst-dm/deliverator/cmd/s3nd")
 	Expect(err).NotTo(HaveOccurred())
 
 	// start s3nd

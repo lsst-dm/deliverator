@@ -16,7 +16,7 @@
 
 ### Contact
 
-Support  https://github.com/lsst-dm/s3nd
+Support  https://github.com/lsst-dm/deliverator
 
 ## Content negotiation
 
