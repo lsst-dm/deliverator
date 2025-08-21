@@ -19,7 +19,7 @@ import (
 type ConnTracker struct {
 	dialer           *net.Dialer
 	mu               sync.Mutex
-	active           map[net.Conn]struct{}
+	active           map[*TrackedConn]struct{}
 	tcpInfoSumClosed *unix.TCPInfo
 	closed           uint64        // number of closed connections
 	uploadPace       atomic.Uint64 // pace in *bytes* per second for uploads
@@ -33,7 +33,7 @@ type ConnTrackerConnections struct {
 func NewConnTracker(d *net.Dialer) *ConnTracker {
 	t := &ConnTracker{
 		dialer:           d,
-		active:           make(map[net.Conn]struct{}),
+		active:           make(map[*TrackedConn]struct{}),
 		tcpInfoSumClosed: &unix.TCPInfo{},
 	}
 
@@ -65,15 +65,8 @@ func (t *ConnTracker) SetPacingRate(pace uint64) error {
 
 	var e []error
 
-	t.Monkey(func(active map[net.Conn]struct{}) {
+	t.Monkey(func(active map[*TrackedConn]struct{}) {
 		for conn := range active {
-			conn, ok := conn.(*trackedConn)
-			if !ok {
-				// conn is not a trackedConn, so we can't set the pacing rate
-				// this should not happen...
-				e = append(e, gherrors.New("conn is not a trackedConn"))
-				continue
-			}
 			if err := conn.setPacingRate(pace); err != nil {
 				e = append(e, err)
 				continue
@@ -117,7 +110,7 @@ func (t *ConnTracker) SetPacingRate(pace uint64) error {
 //	// 		}
 //	// 	}
 //	// })
-func (t *ConnTracker) Monkey(do func(active map[net.Conn]struct{})) {
+func (t *ConnTracker) Monkey(do func(active map[*TrackedConn]struct{})) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	do(t.active)
@@ -130,9 +123,14 @@ func (t *ConnTracker) DialContext(ctx context.Context, network, addr string) (ne
 		return nil, err
 	}
 
+	tc, ok := conn.(TrackableConn)
+	if !ok {
+		return nil, gherrors.New("unable to cast net.Conn to TrackableConn")
+	}
+
 	// Wrap the conn so we can see when the request finishes and
 	// the transport calls Close().
-	tConn := newTrackedConn(conn, t)
+	tConn := newTrackedConn(tc, t)
 
 	t.mu.Lock()
 	t.active[tConn] = struct{}{}
@@ -145,15 +143,15 @@ func (t *ConnTracker) DialContext(ctx context.Context, network, addr string) (ne
 	return tConn, nil
 }
 
-// forget this Conn, called by trackedConn.Close()
-func (t *ConnTracker) markClosed(c net.Conn) {
+// forget this Conn, called by TrackedConn.Close()
+func (t *ConnTracker) markClosed(c *TrackedConn) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	// Aggregate TCPInfo from all closed connections
-	info, err := getConnTcpInfo(c)
+	info, err := c.tcpInfo()
 	if err != nil {
-		slog.Error("error calling getConnTcpInfo()", slog.Any("error", err))
+		slog.Error("error calling tcpInfo()", slog.Any("error", err))
 	} else if info != nil {
 		t.tcpInfoSumClosed = addTcpInfo(t.tcpInfoSumClosed, info)
 	}
@@ -182,20 +180,20 @@ func (t *ConnTracker) startConnStats() {
 		for {
 			<-ticker.C
 
-			tcpInfo, _ := t.GetTcpInfo()
+			tcpInfo, _ := t.TcpInfo()
 
 			slog.Info("tcpinfo total", slog.Any("tcpinfo", tcpInfo))
 		}
 	}()
 }
 
-func (t *ConnTracker) GetTcpInfo() (*unix.TCPInfo, error) {
+func (t *ConnTracker) TcpInfo() (*unix.TCPInfo, error) {
 	tcpInfoSum := &unix.TCPInfo{}
 	var errs []error
 
-	t.Monkey(func(active map[net.Conn]struct{}) {
+	t.Monkey(func(active map[*TrackedConn]struct{}) {
 		for conn := range active {
-			tcpInfo, err := getConnTcpInfo(conn)
+			tcpInfo, err := conn.tcpInfo()
 			if err != nil {
 				errs = append(errs, gherrors.Wrap(err, "getConnTcpInfo()"))
 				continue
@@ -214,50 +212,6 @@ func (t *ConnTracker) GetTcpInfo() (*unix.TCPInfo, error) {
 	}
 
 	return tcpInfoSum, nil
-}
-
-func getConnTcpInfo(conn net.Conn) (*unix.TCPInfo, error) {
-	rc, err := getRawConn(conn)
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := getRawConnTcpInfo(rc)
-	if err != nil {
-		return nil, err
-	}
-
-	return info, nil
-}
-
-func getRawConn(conn net.Conn) (syscall.RawConn, error) {
-	sc, ok := conn.(syscall.Conn)
-	if !ok {
-		return nil, errors.New("unable to cast net.Conn to syscall.Conn")
-	}
-
-	rc, err := sc.SyscallConn()
-	if err != nil {
-		return nil, gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
-	}
-
-	return rc, nil
-}
-
-func getRawConnTcpInfo(conn syscall.RawConn) (*unix.TCPInfo, error) {
-	// https://pkg.go.dev/syscall#RawConn
-	var operr error
-	var info *unix.TCPInfo
-	if err := conn.Control(func(fd uintptr) {
-		info, operr = unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
-	}); err != nil {
-		return nil, gherrors.Wrap(err, "unable to get TCP_INFO")
-	}
-	if operr != nil {
-		return nil, gherrors.Wrap(operr, "unable to get TCP_INFO")
-	}
-
-	return info, nil
 }
 
 func addTcpInfo(a, b *unix.TCPInfo) *unix.TCPInfo {
@@ -279,35 +233,45 @@ func addTcpInfo(a, b *unix.TCPInfo) *unix.TCPInfo {
 	return &infoSum
 }
 
+type TrackableConn interface {
+	net.Conn
+	syscall.Conn
+}
+
 // Wraps a net.Conn to allow tracking state.
-type trackedConn struct {
+type TrackedConn struct {
 	net.Conn
 	tracker *ConnTracker
 	once    sync.Once
 }
 
-func newTrackedConn(c net.Conn, tracker *ConnTracker) *trackedConn {
-	return &trackedConn{
+var _ TrackableConn = (*TrackedConn)(nil)
+
+func newTrackedConn(c TrackableConn, tracker *ConnTracker) *TrackedConn {
+	return &TrackedConn{
 		Conn:    c,
 		tracker: tracker,
 	}
 }
 
+// impliments syscall.Conn interface
+func (tc *TrackedConn) SyscallConn() (syscall.RawConn, error) {
+	if sc, ok := tc.Conn.(syscall.Conn); ok {
+		return sc.SyscallConn()
+	}
+	return nil, gherrors.New("unable to cast net.Conn to syscall.Conn")
+}
+
 // Notify the tracker that the Conn has been closed
-func (tc *trackedConn) Close() error {
-	tc.once.Do(func() { tc.tracker.markClosed(tc.Conn) })
+func (tc *TrackedConn) Close() error {
+	tc.once.Do(func() { tc.tracker.markClosed(tc) })
 	return tc.Conn.Close()
 }
 
-func (tc *trackedConn) setPacingRate(pace uint64) error {
-	// https://pkg.go.dev/syscall#RawConn
-	sc, ok := tc.Conn.(syscall.Conn)
-	if !ok {
-		return gherrors.New("unable to cast net.Conn to syscall.Conn")
-	}
-	rc, err := sc.SyscallConn()
+func (tc *TrackedConn) setPacingRate(pace uint64) error {
+	rc, err := tc.SyscallConn()
 	if err != nil {
-		return gherrors.Wrap(err, "unable to obtain syscall.RawConn from net.Conn")
+		return gherrors.Wrap(err, "unable to obtain syscall.RawConn")
 	}
 	var operr error
 	if err := rc.Control(func(fd uintptr) {
@@ -321,4 +285,23 @@ func (tc *trackedConn) setPacingRate(pace uint64) error {
 	}
 
 	return nil
+}
+
+func (tc *TrackedConn) tcpInfo() (*unix.TCPInfo, error) {
+	rc, err := tc.SyscallConn()
+	if err != nil {
+		return nil, gherrors.Wrap(err, "unable to obtain syscall.RawConn")
+	}
+	var operr error
+	var info *unix.TCPInfo
+	if err := rc.Control(func(fd uintptr) {
+		info, operr = unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
+	}); err != nil {
+		return nil, gherrors.Wrap(err, "unable to get TCP_INFO")
+	}
+	if operr != nil {
+		return nil, gherrors.Wrap(operr, "unable to get TCP_INFO")
+	}
+
+	return info, nil
 }
