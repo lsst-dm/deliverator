@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lsst-dm/s3nd/upload"
-	"github.com/lsst-dm/s3nd/version"
+	"github.com/lsst-dm/deliverator/upload"
+	"github.com/lsst-dm/deliverator/version"
 
 	gherrors "github.com/pkg/errors"
 )

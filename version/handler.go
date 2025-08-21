@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/lsst-dm/s3nd/conf"
+	"github.com/lsst-dm/deliverator/conf"
 )
 
 type VersionHandler struct {

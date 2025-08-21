@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/lsst-dm/s3nd/client"
-	"github.com/lsst-dm/s3nd/version"
+	"github.com/lsst-dm/deliverator/client"
+	"github.com/lsst-dm/deliverator/version"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

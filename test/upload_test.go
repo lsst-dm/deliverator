@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lsst-dm/s3nd/client"
-	"github.com/lsst-dm/s3nd/upload"
+	"github.com/lsst-dm/deliverator/client"
+	"github.com/lsst-dm/deliverator/upload"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
