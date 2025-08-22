@@ -402,6 +402,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 	{
 		ctx, cancel := context.WithTimeoutCause(r.Context(), *h.conf.QueueTimeout, errUploadQueueTimeout)
 		defer cancel()
+		// XXX add a waiting callback that can be used to log the number of queued uploads
 		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts)); err != nil {
 			task.StopNoUpload()
 			if gherrors.Is(context.Cause(ctx), errUploadQueueTimeout) {
@@ -590,6 +591,7 @@ func (h *S3ndHandler) updatePacingRate() {
 		"uploads", h.parallelUploads.GetCount(),
 		"pace_mbits", h.connTracker.PacingRateMbits(),
 		"pace_bytes", h.connTracker.PacingRate(),
+		"queued", h.parallelUploads.Waiters(),
 	)
 }
 
