@@ -17,5 +17,6 @@ var _ = Describe("GET /metrics", func() {
 
 		body, _ := io.ReadAll(resp.Body)
 		Expect(string(body)).To(ContainSubstring("s3nd_upload_parts_active"))
+		Expect(string(body)).To(ContainSubstring("s3nd_s3_tcp_conn_pace_max_bytes"))
 	})
 })

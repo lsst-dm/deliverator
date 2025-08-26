@@ -32,6 +32,7 @@ func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 		"conn_active":         prometheus.NewDesc("s3nd_s3_tcp_conn_active", "number of active tcp connections to the endpoint", nil, nil),
 		"conn_closed_total":   prometheus.NewDesc("s3nd_s3_tcp_conn_closed_total", "number of tcp connections to the endpoint which have been closed", nil, nil),
 		"conn_pace":           prometheus.NewDesc("s3nd_s3_tcp_conn_pace_bytes", "the current SO_MAX_PACING_RATE set on active upload sockets in bytes per second", nil, nil),
+		"conn_pace_max":       prometheus.NewDesc("s3nd_s3_tcp_conn_pace_max_bytes", "the maximum possible pacing rate in bytes per second", nil, nil),
 	}
 	return &S3ndCollector{handler: handler, descs: descs}
 }
@@ -97,6 +98,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		{"upload_queued", float64(c.handler.ParallelUploads().Waiters())},
 		{"conn_active", float64(counts.Active)},
 		{"conn_pace", float64(c.handler.ConnTracker().PacingRate())},
+		{"conn_pace_max", float64(conf.UploadBwlimitBytes())},
 	}
 
 	for _, metric := range gauges {
