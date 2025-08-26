@@ -599,16 +599,16 @@ func (h *S3ndHandler) logUploads() {
 		// omit pacing rate logging if there is no upload bandwidth limit configured
 		logger.Info(
 			"active uploads",
-			"uploads", h.parallelUploads.GetCount(),
-			"queued", h.parallelUploads.Waiters(),
+			"upload_parts_active", h.parallelUploads.GetCount(),
+			"upload_queued", h.parallelUploads.Waiters(),
 		)
 	} else {
 		logger.Info(
 			"active uploads",
-			"uploads", h.parallelUploads.GetCount(),
-			"pace_mbits", h.connTracker.PacingRateMbits(),
-			"pace_bytes", h.connTracker.PacingRate(),
-			"queued", h.parallelUploads.Waiters(),
+			"s3_tcp_conn_pace_bytes", h.connTracker.PacingRate(),
+			"s3_tcp_conn_pace_mbits", h.connTracker.PacingRateMbits(),
+			"upload_parts_active", h.parallelUploads.GetCount(),
+			"upload_queued", h.parallelUploads.Waiters(),
 		)
 	}
 }
