@@ -394,15 +394,26 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 	}
 
 	logger.Info(
-		"queueing",
+		"new upload request",
 		slog.Any("task", task),
 	)
 
 	// limit the number of parallel uploads
 	{
+		logWait := func(ctx context.Context) error {
+			logger.Info(
+				"upload queued, waiting for upload slot(s)",
+				slog.Any("task", task),
+			)
+			h.logUploads()
+
+			return nil
+		}
+
 		ctx, cancel := context.WithTimeoutCause(r.Context(), *h.conf.QueueTimeout, errUploadQueueTimeout)
 		defer cancel()
-		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts)); err != nil {
+
+		if err := h.parallelUploads.Acquire(ctx, int(task.UploadParts), logWait); err != nil {
 			task.StopNoUpload()
 			if gherrors.Is(context.Cause(ctx), errUploadQueueTimeout) {
 				err = errors.Join(errUploadQueueTimeout, err)
@@ -560,8 +571,15 @@ attempts:
 // based on the number of active uploads, adjust the packet pacing rate on all
 // net.Conn's in the connection pool
 func (h *S3ndHandler) updatePacingRate() {
+	defer h.logUploads() // always log the current state
+
 	var targetPace uint64
 	bwLimitBytes := divCeil(h.conf.UploadBwlimit.Value(), 8)
+
+	if bwLimitBytes == 0 {
+		// noop if there is no, or effectively no, upload bandwidth limit configured
+		return
+	}
 
 	// avoid div by zero
 	if h.parallelUploads.GetCount() == 0 {
@@ -570,27 +588,29 @@ func (h *S3ndHandler) updatePacingRate() {
 		targetPace = uint64(divCeil(bwLimitBytes, int64(h.parallelUploads.GetCount()))) //gosec:disable G115
 	}
 
+	if err := h.connTracker.SetPacingRate(targetPace); err != nil {
+		logger.Error("unable to set pacing rate", slog.Any("error", err))
+		return
+	}
+}
+
+func (h *S3ndHandler) logUploads() {
 	if h.conf.UploadBwlimit.Value() == 0 {
 		// omit pacing rate logging if there is no upload bandwidth limit configured
 		logger.Info(
 			"active uploads",
 			"uploads", h.parallelUploads.GetCount(),
+			"queued", h.parallelUploads.Waiters(),
 		)
-		// noop if there is no upload bandwidth limit configured
-		return
+	} else {
+		logger.Info(
+			"active uploads",
+			"uploads", h.parallelUploads.GetCount(),
+			"pace_mbits", h.connTracker.PacingRateMbits(),
+			"pace_bytes", h.connTracker.PacingRate(),
+			"queued", h.parallelUploads.Waiters(),
+		)
 	}
-
-	if err := h.connTracker.SetPacingRate(targetPace); err != nil {
-		logger.Error("unable to set pacing rate", slog.Any("error", err))
-		return
-	}
-
-	logger.Info(
-		"active uploads",
-		"uploads", h.parallelUploads.GetCount(),
-		"pace_mbits", h.connTracker.PacingRateMbits(),
-		"pace_bytes", h.connTracker.PacingRate(),
-	)
 }
 
 func divCeil(a, b int64) int64 {

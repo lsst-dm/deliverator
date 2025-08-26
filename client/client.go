@@ -84,7 +84,8 @@ func (c *Client) UploadMulti(ctx context.Context, files map[string]url.URL, slug
 
 	for f, uri := range files {
 		wg.Add(1)
-		go func() {
+
+		go func(ctx context.Context, f string, uri url.URL, slug string) {
 			defer wg.Done()
 			status, err := c.Upload(ctx, f, uri, slug)
 			statusCh <- &UploadStatus{
@@ -92,7 +93,7 @@ func (c *Client) UploadMulti(ctx context.Context, files map[string]url.URL, slug
 				RequestStatus: status,
 				Error:         err,
 			}
-		}()
+		}(ctx, f, uri, slug)
 	}
 
 	wg.Wait()
