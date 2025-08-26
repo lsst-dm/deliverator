@@ -575,7 +575,7 @@ func (h *S3ndHandler) updatePacingRate() {
 	defer h.logUploads() // always log the current state
 
 	var targetPace uint64
-	bwLimitBytes := util.DivCeil(h.conf.UploadBwlimit.Value(), 8)
+	bwLimitBytes := h.conf.UploadBwlimitBytes()
 
 	if bwLimitBytes == 0 {
 		// noop if there is no, or effectively no, upload bandwidth limit configured
