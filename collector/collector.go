@@ -15,23 +15,23 @@ type S3ndCollector struct {
 
 func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 	descs := map[string]*prometheus.Desc{
-		"bytes_acked":       prometheus.NewDesc("s3nd_s3_tcp_info_bytes_acked_total", "tcpi_bytes_acked from tcp_info", nil, nil),
-		"bytes_received":    prometheus.NewDesc("s3nd_s3_tcp_info_bytes_received_total", "tcpi_bytes_received from tcp_info", nil, nil),
-		"bytes_retrans":     prometheus.NewDesc("s3nd_s3_tcp_info_bytes_retrans_total", "tcpi_bytes_retrans from tcp_info", nil, nil),
-		"bytes_sent":        prometheus.NewDesc("s3nd_s3_tcp_info_bytes_sent_total", "tcpi_bytes_sent from tcp_info", nil, nil),
-		"dsack_dups":        prometheus.NewDesc("s3nd_s3_tcp_info_dsack_dups_total", "tcpi_dsack_dups from tcp_info", nil, nil),
-		"fackets":           prometheus.NewDesc("s3nd_s3_tcp_info_fackets_total", "tcpi_fackets from tcp_info", nil, nil),
-		"lost":              prometheus.NewDesc("s3nd_s3_tcp_info_lost_total", "tcpi_lost from tcp_info", nil, nil),
-		"rcv_ooopack":       prometheus.NewDesc("s3nd_s3_tcp_info_rcv_ooopack_total", "tcpi_rcv_ooopack from tcp_info", nil, nil),
-		"reord_seen":        prometheus.NewDesc("s3nd_s3_tcp_info_reord_seen_total", "tcpi_reord_seen from tcp_info", nil, nil),
-		"retrans":           prometheus.NewDesc("s3nd_s3_tcp_info_retrans_total", "tcpi_retrans from tcp_info", nil, nil),
-		"sacked":            prometheus.NewDesc("s3nd_s3_tcp_info_sacked_total", "tcpi_sacked from tcp_info", nil, nil),
-		"total_retrans":     prometheus.NewDesc("s3nd_s3_tcp_info_total_retrans_total", "tcpi_total_retrans from tcp_info", nil, nil),
-		"upload_active":     prometheus.NewDesc("s3nd_upload_active", "number of active uploads", nil, nil),
-		"upload_queued":     prometheus.NewDesc("s3nd_upload_queued", "number of requests waiting for an upload slot", nil, nil),
-		"conn_active":       prometheus.NewDesc("s3nd_s3_tcp_conn_active", "number of active tcp connections to the endpoint", nil, nil),
-		"conn_closed_total": prometheus.NewDesc("s3nd_s3_tcp_conn_closed_total", "number of tcp connections to the endpoint which have been closed", nil, nil),
-		"conn_pace":         prometheus.NewDesc("s3nd_s3_tcp_conn_pace_bytes", "the current SO_MAX_PACING_RATE set on active upload sockets in bytes per second", nil, nil),
+		"bytes_acked":         prometheus.NewDesc("s3nd_s3_tcp_info_bytes_acked_total", "tcpi_bytes_acked from tcp_info", nil, nil),
+		"bytes_received":      prometheus.NewDesc("s3nd_s3_tcp_info_bytes_received_total", "tcpi_bytes_received from tcp_info", nil, nil),
+		"bytes_retrans":       prometheus.NewDesc("s3nd_s3_tcp_info_bytes_retrans_total", "tcpi_bytes_retrans from tcp_info", nil, nil),
+		"bytes_sent":          prometheus.NewDesc("s3nd_s3_tcp_info_bytes_sent_total", "tcpi_bytes_sent from tcp_info", nil, nil),
+		"dsack_dups":          prometheus.NewDesc("s3nd_s3_tcp_info_dsack_dups_total", "tcpi_dsack_dups from tcp_info", nil, nil),
+		"fackets":             prometheus.NewDesc("s3nd_s3_tcp_info_fackets_total", "tcpi_fackets from tcp_info", nil, nil),
+		"lost":                prometheus.NewDesc("s3nd_s3_tcp_info_lost_total", "tcpi_lost from tcp_info", nil, nil),
+		"rcv_ooopack":         prometheus.NewDesc("s3nd_s3_tcp_info_rcv_ooopack_total", "tcpi_rcv_ooopack from tcp_info", nil, nil),
+		"reord_seen":          prometheus.NewDesc("s3nd_s3_tcp_info_reord_seen_total", "tcpi_reord_seen from tcp_info", nil, nil),
+		"retrans":             prometheus.NewDesc("s3nd_s3_tcp_info_retrans_total", "tcpi_retrans from tcp_info", nil, nil),
+		"sacked":              prometheus.NewDesc("s3nd_s3_tcp_info_sacked_total", "tcpi_sacked from tcp_info", nil, nil),
+		"total_retrans":       prometheus.NewDesc("s3nd_s3_tcp_info_total_retrans_total", "tcpi_total_retrans from tcp_info", nil, nil),
+		"upload_parts_active": prometheus.NewDesc("s3nd_upload_parts_active", "number of upload parts actively transferring", nil, nil),
+		"upload_queued":       prometheus.NewDesc("s3nd_upload_queued", "number of requests waiting for an upload slot", nil, nil),
+		"conn_active":         prometheus.NewDesc("s3nd_s3_tcp_conn_active", "number of active tcp connections to the endpoint", nil, nil),
+		"conn_closed_total":   prometheus.NewDesc("s3nd_s3_tcp_conn_closed_total", "number of tcp connections to the endpoint which have been closed", nil, nil),
+		"conn_pace":           prometheus.NewDesc("s3nd_s3_tcp_conn_pace_bytes", "the current SO_MAX_PACING_RATE set on active upload sockets in bytes per second", nil, nil),
 	}
 	return &S3ndCollector{handler: handler, descs: descs}
 }
@@ -93,7 +93,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		name  string
 		value float64
 	}{
-		{"upload_active", float64(c.handler.ParallelUploads().GetCount())},
+		{"upload_parts_active", float64(c.handler.ParallelUploads().GetCount())},
 		{"upload_queued", float64(c.handler.ParallelUploads().Waiters())},
 		{"conn_active", float64(counts.Active)},
 		{"conn_pace", float64(c.handler.ConnTracker().PacingRate())},
