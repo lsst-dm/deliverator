@@ -19,6 +19,7 @@ import (
 	"github.com/lsst-dm/deliverator/conntracker"
 	"github.com/lsst-dm/deliverator/semaphore"
 	"github.com/lsst-dm/deliverator/upload/badrequesterror"
+	"github.com/lsst-dm/deliverator/util"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
@@ -505,7 +506,7 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	}
 	task.SizeBytes = fStat.Size()
 	// if the file is empty, we still need to upload it, so set the part size to 1
-	task.UploadParts = max(divCeil(task.SizeBytes, h.conf.UploadPartsize.Value()), 1)
+	task.UploadParts = max(util.DivCeil(task.SizeBytes, h.conf.UploadPartsize.Value()), 1)
 
 	return nil
 }
@@ -574,7 +575,7 @@ func (h *S3ndHandler) updatePacingRate() {
 	defer h.logUploads() // always log the current state
 
 	var targetPace uint64
-	bwLimitBytes := divCeil(h.conf.UploadBwlimit.Value(), 8)
+	bwLimitBytes := util.DivCeil(h.conf.UploadBwlimit.Value(), 8)
 
 	if bwLimitBytes == 0 {
 		// noop if there is no, or effectively no, upload bandwidth limit configured
@@ -585,7 +586,7 @@ func (h *S3ndHandler) updatePacingRate() {
 	if h.parallelUploads.GetCount() == 0 {
 		targetPace = uint64(bwLimitBytes) //gosec:disable G115
 	} else {
-		targetPace = uint64(divCeil(bwLimitBytes, int64(h.parallelUploads.GetCount()))) //gosec:disable G115
+		targetPace = uint64(util.DivCeil(bwLimitBytes, int64(h.parallelUploads.GetCount()))) //gosec:disable G115
 	}
 
 	if err := h.connTracker.SetPacingRate(targetPace); err != nil {
@@ -611,11 +612,4 @@ func (h *S3ndHandler) logUploads() {
 			"upload_queued", h.parallelUploads.Waiters(),
 		)
 	}
-}
-
-func divCeil(a, b int64) int64 {
-	if b == 0 {
-		panic("division by zero")
-	}
-	return (a + b - 1) / b // rounds up
 }
