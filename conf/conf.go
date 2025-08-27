@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lsst-dm/deliverator/util"
+
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -38,6 +40,11 @@ func (conf *S3ndConf) ToMap() map[string]string {
 		"S3ND_UPLOAD_BWLIMIT":           conf.UploadBwlimit.String(),
 		"S3ND_UPLOAD_WRITE_BUFFER_SIZE": conf.UploadWriteBufferSize.String(),
 	}
+}
+
+// return the upload pacing rate in bytes per second
+func (conf *S3ndConf) UploadBwlimitBytes() int64 {
+	return util.DivCeil(conf.UploadBwlimit.Value(), 8)
 }
 
 // Parse the environment variables and flags. If a flag is not set, the
