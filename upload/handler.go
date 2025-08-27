@@ -39,7 +39,13 @@ var (
 	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
 	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
 	errUploadNoSuchBucket   = gherrors.New("upload failed because the bucket does not exist")
-	uploadAttempts          = promauto.NewCounter(
+	uploadValid             = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "s3nd_upload_valid_requests_total",
+			Help: "the number of valid upload requests",
+		},
+	)
+	uploadAttempts = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_attempts_total",
 			Help: "number of attempts to upload a file",
@@ -394,6 +400,7 @@ func (h *S3ndHandler) doServeHTTP(r *http.Request) (*UploadTask, error) {
 		return task, err
 	}
 
+	uploadValid.Inc()
 	logger.Info(
 		"new upload request",
 		slog.Any("task", task),
