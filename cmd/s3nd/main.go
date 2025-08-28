@@ -46,7 +46,6 @@ func main() {
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collector.NewS3ndCollector(uHandler))
-	reg.MustRegister(uHandler.Registry())
 
 	r := chi.NewRouter()
 	r.Get("/swagger/*", httpSwagger.Handler())
