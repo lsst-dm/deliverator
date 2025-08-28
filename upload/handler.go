@@ -39,45 +39,46 @@ var (
 	errUploadQueueTimeout   = gherrors.New("upload queue timeout")
 	errUploadAborted        = gherrors.New("upload request aborted because the client disconnected")
 	errUploadNoSuchBucket   = gherrors.New("upload failed because the bucket does not exist")
-	uploadValid             = promauto.NewCounter(
+	registry                = prometheus.NewRegistry()
+	uploadValid             = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_valid_requests_total",
 			Help: "the number of valid upload requests",
 		},
 	)
-	uploadAttempts = promauto.NewCounter(
+	uploadAttempts = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_attempts_total",
 			Help: "number of attempts to upload a file",
 		},
 	)
-	uploadRetries = promauto.NewCounter(
+	uploadRetries = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_retries_total",
 			Help: "number of attempts to upload a file after a failure",
 		},
 	)
-	uploadRequests = promauto.NewCounterVec(
+	uploadRequests = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_http_requests_total",
 			Help: "http status codes returned to the client",
 		},
 		[]string{"code", "reason"},
 	)
-	uploadBytes = promauto.NewCounter(
+	uploadBytes = promauto.With(registry).NewCounter(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_bytes_total",
 			Help: "number of bytes transferred for files which completed successfully",
 		},
 	)
-	s3HTTPResponses = promauto.NewCounterVec(
+	s3HTTPResponses = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_s3_http_responses_total",
 			Help: "http status codes returned by the s3 service",
 		},
 		[]string{"code", "reason"},
 	)
-	s3APIErrors = promauto.NewCounterVec(
+	s3APIErrors = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_s3_api_errors_total",
 			Help: "api status codes returned by the s3 service",
@@ -105,6 +106,12 @@ func (h *S3ndHandler) Conf() *conf.S3ndConf {
 
 func (h *S3ndHandler) ParallelUploads() *semaphore.Semaphore {
 	return &h.parallelUploads
+}
+
+// Returns the prometheus registry used by this handler.
+// Note that there is a single registry shared by all handler instances.
+func (h *S3ndHandler) Registry() *prometheus.Registry {
+	return registry
 }
 
 type UploadTask struct {

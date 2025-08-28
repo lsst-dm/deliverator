@@ -44,13 +44,15 @@ func main() {
 
 	uHandler := upload.NewS3ndHandler(&conf)
 
-	prometheus.MustRegister(collector.NewS3ndCollector(uHandler))
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collector.NewS3ndCollector(uHandler))
+	reg.MustRegister(uHandler.Registry())
 
 	r := chi.NewRouter()
 	r.Get("/swagger/*", httpSwagger.Handler())
 	r.Handle("/version", version.NewHandler(&conf))
 	r.Handle("/upload", uHandler)
-	r.Handle("/metrics", promhttp.Handler())
+	r.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 
 	addr := fmt.Sprintf("%s:%d", *conf.Host, *conf.Port)
 	slog.Info("listening", "address", addr)
