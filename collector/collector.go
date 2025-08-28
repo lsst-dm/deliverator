@@ -44,6 +44,8 @@ func (c *S3ndCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
+	c.handler.Registry().Collect(ch)
+
 	tcpInfo, err := c.handler.ConnTracker().TcpInfo()
 	if err != nil {
 		slog.Error("failed to get aggregate TCP info", "error", err)
