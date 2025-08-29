@@ -83,33 +83,48 @@ definitions:
           duration:
             example: 37.921µs
             type: string
-          duration_seconds:
-            example: 0.021
-            type: number
           file:
+            description: request input
             example: /path/to/file.txt
             type: string
           id:
             format: uuid
             type: string
-          size_bytes:
-            example: 1000
-            type: integer
           slug:
-            description: for logging
+            description: request input; for logging
             example: Gray Garden Slug
             type: string
-          transfer_rate:
-            description: human friendly
-            example: 1000B/s
-            type: string
-          transfer_rate_mbits:
-            example: 0.001
-            type: number
+          upload_attempts:
+            example: 1
+            type: integer
           upload_parts:
             example: 1
             type: integer
+          upload_queued_seconds:
+            example: 0.021
+            type: number
+          upload_rate:
+            description: human friendly
+            example: 42Mbit/s
+            type: string
+          upload_rate_bytes:
+            example: 796.178343
+            type: number
+          upload_size_bytes:
+            example: 1000
+            type: integer
+          upload_total:
+            description: human friendly
+            example: 21.916462ms
+            type: string
+          upload_total_seconds:
+            example: 1.255
+            type: number
+          upload_transfer_seconds:
+            example: 1.234
+            type: number
           uri:
+            description: request input
             example: s3://my-bucket/my-key
             type: string
         type: object
@@ -144,40 +159,48 @@ definitions:
     type: object
   task:
     properties:
-      attempts:
-        example: 1
-        type: integer
-      duration:
-        description: human friendly
-        example: 21.916462ms
-        type: string
-      duration_seconds:
-        example: 0.021
-        type: number
       file:
+        description: request input
         example: /path/to/file.txt
         type: string
       id:
         format: uuid
         type: string
-      size_bytes:
-        example: 1000
-        type: integer
       slug:
-        description: for logging
+        description: request input; for logging
         example: Gray Garden Slug
         type: string
-      transfer_rate:
-        description: human friendly
-        example: 1000B/s
-        type: string
-      transfer_rate_mbits:
-        example: 0.001
-        type: number
+      upload_attempts:
+        example: 1
+        type: integer
       upload_parts:
         example: 1
         type: integer
+      upload_queued_seconds:
+        example: 0.021
+        type: number
+      upload_rate:
+        description: human friendly
+        example: 42Mbit/s
+        type: string
+      upload_rate_bytes:
+        example: 796.178343
+        type: number
+      upload_size_bytes:
+        example: 1000
+        type: integer
+      upload_total:
+        description: human friendly
+        example: 21.916462ms
+        type: string
+      upload_total_seconds:
+        example: 1.255
+        type: number
+      upload_transfer_seconds:
+        example: 1.234
+        type: number
       uri:
+        description: request input
         example: s3://my-bucket/my-key
         type: string
     type: object
