@@ -1,4 +1,4 @@
-module github.com/lsst-dm/deliverator
+module github.com/lsst-dm/deliverator/v2
 
 go 1.25.0
 

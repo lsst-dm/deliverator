@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/lsst-dm/deliverator/conf"
+	"github.com/lsst-dm/deliverator/v2/conf"
 
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )

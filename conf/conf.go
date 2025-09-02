@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lsst-dm/deliverator/util"
+	"github.com/lsst-dm/deliverator/v2/util"
 
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 )
