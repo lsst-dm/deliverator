@@ -1,7 +1,7 @@
 VERSION=$(shell git describe --tags --dirty --always)
 
 LDFLAGS += -extldflags '-static' -w
-LDFLAGS += -X github.com/lsst-dm/deliverator/version.Version=$(VERSION)
+LDFLAGS += -X github.com/lsst-dm/deliverator/v2/version.Version=$(VERSION)
 
 .PHONY: all
 all: lint docs build
