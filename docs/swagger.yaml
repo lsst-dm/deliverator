@@ -19,6 +19,10 @@ definitions:
         type: string
       task:
         $ref: '#/definitions/task'
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   requestStatus400:
     properties:
@@ -41,6 +45,10 @@ definitions:
             example: Gray Garden Slug
             type: string
         type: object
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   requestStatus404:
     properties:
@@ -52,6 +60,10 @@ definitions:
         type: string
       task:
         $ref: '#/definitions/task'
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   requestStatus408:
     properties:
@@ -63,6 +75,10 @@ definitions:
         type: string
       task:
         $ref: '#/definitions/task'
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   requestStatus500:
     properties:
@@ -122,6 +138,10 @@ definitions:
             example: s3://my-bucket/my-key
             type: string
         type: object
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   requestStatus504:
     properties:
@@ -147,6 +167,10 @@ definitions:
             example: s3://my-bucket/my-key
             type: string
         type: object
+      version:
+        description: s3nd|api version
+        example: 0.0.0
+        type: string
     type: object
   task:
     properties:
