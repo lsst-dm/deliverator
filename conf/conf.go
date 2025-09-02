@@ -24,6 +24,7 @@ type S3ndConf struct {
 	UploadPartsize        *k8sresource.Quantity
 	UploadBwlimit         *k8sresource.Quantity
 	UploadWriteBufferSize *k8sresource.Quantity
+	version               string
 }
 
 func (conf *S3ndConf) ToMap() map[string]string {
@@ -47,10 +48,16 @@ func (conf *S3ndConf) UploadBwlimitBytes() int64 {
 	return util.DivCeil(conf.UploadBwlimit.Value(), 8)
 }
 
+// Version returns the s3nd|api version.
+func (conf *S3ndConf) Version() string {
+	return conf.version
+}
+
 // Parse the environment variables and flags. If a flag is not set, the
 // environment variable is used. Errors are fatal.
 func NewConf(version string) S3ndConf {
 	conf := S3ndConf{}
+	conf.version = version
 
 	// start flags
 	defaultHost, ok := os.LookupEnv("S3ND_HOST")
@@ -116,7 +123,7 @@ func NewConf(version string) S3ndConf {
 	// end flags
 
 	if *versionFlag {
-		fmt.Println(version)
+		fmt.Println(conf.version)
 		os.Exit(0)
 	}
 

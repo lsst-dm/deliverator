@@ -252,9 +252,10 @@ func (u *RequestURL) UnmarshalText(text []byte) error {
 }
 
 type RequestStatus struct {
-	Code int         `json:"code" example:"200"`
-	Msg  string      `json:"msg,omitempty" example:"upload succeeded"`
-	Task *UploadTask `json:"task,omitempty"`
+	Version string      `json:"version" example:"0.0.0"` // s3nd|api version
+	Code    int         `json:"code" example:"200"`
+	Msg     string      `json:"msg,omitempty" example:"upload succeeded"`
+	Task    *UploadTask `json:"task,omitempty"`
 } //@name requestStatus200
 
 // requestStatusSwag400 is used only for Swagger documentation
@@ -456,9 +457,10 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := RequestStatus{
-		Code: code,
-		Msg:  msg,
-		Task: task,
+		Version: h.conf.Version(),
+		Code:    code,
+		Msg:     msg,
+		Task:    task,
 	}
 
 	logLevel := slog.LevelInfo

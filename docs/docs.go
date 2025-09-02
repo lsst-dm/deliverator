@@ -175,6 +175,11 @@ const docTemplate = `{
                 },
                 "task": {
                     "$ref": "#/definitions/task"
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },
@@ -206,6 +211,11 @@ const docTemplate = `{
                             "example": "Gray Garden Slug"
                         }
                     }
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },
@@ -222,6 +232,11 @@ const docTemplate = `{
                 },
                 "task": {
                     "$ref": "#/definitions/task"
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },
@@ -238,6 +253,11 @@ const docTemplate = `{
                 },
                 "task": {
                     "$ref": "#/definitions/task"
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },
@@ -317,6 +337,11 @@ const docTemplate = `{
                             "example": "s3://my-bucket/my-key"
                         }
                     }
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },
@@ -352,6 +377,11 @@ const docTemplate = `{
                             "example": "s3://my-bucket/my-key"
                         }
                     }
+                },
+                "version": {
+                    "description": "s3nd|api version",
+                    "type": "string",
+                    "example": "0.0.0"
                 }
             }
         },

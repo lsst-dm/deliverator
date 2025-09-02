@@ -224,6 +224,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `200` |
 | msg | string| `string` |  | |  | `upload succeeded` |
 | task | [Task](#task)| `Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
@@ -241,6 +242,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `400` |
 | msg | string| `string` |  | |  | `error parsing request: missing field: uri` |
 | task | [RequestStatus400Task](#request-status400-task)| `RequestStatus400Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
@@ -277,6 +279,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `404` |
 | msg | string| `string` |  | |  | `upload failed because the bucket does not exist` |
 | task | [Task](#task)| `Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
@@ -294,6 +297,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `408` |
 | msg | string| `string` |  | |  | `upload queue timeout` |
 | task | [Task](#task)| `Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
@@ -311,6 +315,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `500` |
 | msg | string| `string` |  | |  | `unknown error` |
 | task | [RequestStatus500Task](#request-status500-task)| `RequestStatus500Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
@@ -358,6 +363,7 @@ Status: Gateway Timeout
 | code | integer| `int64` |  | |  | `504` |
 | msg | string| `string` |  | |  | `timeout during upload attempt 2/2` |
 | task | [RequestStatus504Task](#request-status504-task)| `RequestStatus504Task` |  | |  |  |
+| version | string| `string` |  | | s3nd|api version | `0.0.0` |
 
 
 
