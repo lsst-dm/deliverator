@@ -257,7 +257,6 @@ Status: Gateway Timeout
 
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
-| duration | string| `string` |  | |  | `37.921µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | slug | string| `string` |  | | for logging | `Gray Garden Slug` |
@@ -329,16 +328,19 @@ Status: Gateway Timeout
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | attempts | integer| `int64` |  | |  | `5` |
-| duration | string| `string` |  | |  | `37.921µs` |
-| duration_seconds | number| `float64` |  | |  | `0.021` |
-| file | string| `string` |  | |  | `/path/to/file.txt` |
+| file | string| `string` |  | | request input | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
-| size_bytes | integer| `int64` |  | |  | `1000` |
-| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
-| transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
-| transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
+| slug | string| `string` |  | | request input; for logging | `Gray Garden Slug` |
+| upload_attempts | integer| `int64` |  | |  | `1` |
 | upload_parts | integer| `int64` |  | |  | `1` |
-| uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
+| upload_queued_seconds | number| `float64` |  | |  | `0.021` |
+| upload_rate | string| `string` |  | | human friendly | `42Mbit/s` |
+| upload_rate_bytes | number| `float64` |  | |  | `796.178343` |
+| upload_size_bytes | integer| `int64` |  | |  | `1000` |
+| upload_total | string| `string` |  | | human friendly | `21.916462ms` |
+| upload_total_seconds | number| `float64` |  | |  | `1.255` |
+| upload_transfer_seconds | number| `float64` |  | |  | `1.234` |
+| uri | string| `string` |  | | request input | `s3://my-bucket/my-key` |
 
 
 
@@ -372,7 +374,6 @@ Status: Gateway Timeout
 
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
-| duration | string| `string` |  | |  | `56.115µs` |
 | file | string| `string` |  | |  | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
 | slug | string| `string` |  | | for logging | `Gray Garden Slug` |
@@ -391,16 +392,18 @@ Status: Gateway Timeout
 
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
-| attempts | integer| `int64` |  | |  | `1` |
-| duration | string| `string` |  | | human friendly | `21.916462ms` |
-| duration_seconds | number| `float64` |  | |  | `0.021` |
-| file | string| `string` |  | |  | `/path/to/file.txt` |
+| file | string| `string` |  | | request input | `/path/to/file.txt` |
 | id | uuid (formatted string)| `strfmt.UUID` |  | |  |  |
-| size_bytes | integer| `int64` |  | |  | `1000` |
-| slug | string| `string` |  | | for logging | `Gray Garden Slug` |
-| transfer_rate | string| `string` |  | | human friendly | `1000B/s` |
-| transfer_rate_mbits | number| `float64` |  | |  | `0.001` |
+| slug | string| `string` |  | | request input; for logging | `Gray Garden Slug` |
+| upload_attempts | integer| `int64` |  | |  | `1` |
 | upload_parts | integer| `int64` |  | |  | `1` |
-| uri | string| `string` |  | |  | `s3://my-bucket/my-key` |
+| upload_queued_seconds | number| `float64` |  | |  | `0.021` |
+| upload_rate | string| `string` |  | | human friendly | `42Mbit/s` |
+| upload_rate_bytes | number| `float64` |  | |  | `796.178343` |
+| upload_size_bytes | integer| `int64` |  | |  | `1000` |
+| upload_total | string| `string` |  | | human friendly | `21.916462ms` |
+| upload_total_seconds | number| `float64` |  | |  | `1.255` |
+| upload_transfer_seconds | number| `float64` |  | |  | `1.234` |
+| uri | string| `string` |  | | request input | `s3://my-bucket/my-key` |
 
 
