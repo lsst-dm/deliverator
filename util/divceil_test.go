@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/lsst-dm/deliverator/util"
+	"github.com/lsst-dm/deliverator/v2/util"
 )
 
 var _ = Describe("DivCeil", func() {

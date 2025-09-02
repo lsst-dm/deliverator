@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/lsst-dm/deliverator/upload"
+	"github.com/lsst-dm/deliverator/v2/upload"
 )
 
 var _ = Describe("RequestURL", func() {

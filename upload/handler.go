@@ -16,11 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lsst-dm/deliverator/conf"
-	"github.com/lsst-dm/deliverator/conntracker"
-	"github.com/lsst-dm/deliverator/semaphore"
-	"github.com/lsst-dm/deliverator/upload/badrequesterror"
-	"github.com/lsst-dm/deliverator/util"
+	"github.com/lsst-dm/deliverator/v2/conf"
+	"github.com/lsst-dm/deliverator/v2/conntracker"
+	"github.com/lsst-dm/deliverator/v2/semaphore"
+	"github.com/lsst-dm/deliverator/v2/upload/badrequesterror"
+	"github.com/lsst-dm/deliverator/v2/util"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
