@@ -25,6 +25,7 @@ func NewS3ndCollector(handler *upload.S3ndHandler) prometheus.Collector {
 		"rcv_ooopack":         prometheus.NewDesc("s3nd_s3_tcp_info_rcv_ooopack_total", "tcpi_rcv_ooopack from tcp_info", nil, nil),
 		"reord_seen":          prometheus.NewDesc("s3nd_s3_tcp_info_reord_seen_total", "tcpi_reord_seen from tcp_info", nil, nil),
 		"retrans":             prometheus.NewDesc("s3nd_s3_tcp_info_retrans_total", "tcpi_retrans from tcp_info", nil, nil),
+		"rtt":                 prometheus.NewDesc("s3nd_s3_tcp_info_rtt_seconds", "tcpi_rtt from tcp_info in seconds", nil, nil),
 		"sacked":              prometheus.NewDesc("s3nd_s3_tcp_info_sacked_total", "tcpi_sacked from tcp_info", nil, nil),
 		"total_retrans":       prometheus.NewDesc("s3nd_s3_tcp_info_total_retrans_total", "tcpi_total_retrans from tcp_info", nil, nil),
 		"upload_parts_active": prometheus.NewDesc("s3nd_upload_parts_active", "number of upload parts actively transferring", nil, nil),
@@ -96,6 +97,7 @@ func (c *S3ndCollector) Collect(ch chan<- prometheus.Metric) {
 		name  string
 		value float64
 	}{
+		{"rtt", float64(tcpInfo.Rtt) / 1e6}, // convert from microseconds to seconds
 		{"upload_parts_active", float64(c.handler.ParallelUploads().GetCount())},
 		{"upload_queued", float64(c.handler.ParallelUploads().Waiters())},
 		{"conn_active", float64(counts.Active)},
