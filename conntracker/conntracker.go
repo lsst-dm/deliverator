@@ -12,6 +12,7 @@ import (
 
 	gherrors "github.com/pkg/errors"
 	"golang.org/x/sys/unix"
+	"gonum.org/v1/gonum/stat"
 )
 
 // ConnTracker records and tracks every conn the transport dials. A conn is
@@ -38,7 +39,7 @@ func NewConnTracker(d *net.Dialer) *ConnTracker {
 	}
 
 	// enable periodic stats logging -- useful for debugging
-	// t.startConnStats()
+	// t.startConnStats(2000 * time.Millisecond)
 
 	return t
 }
@@ -172,9 +173,9 @@ func (t *ConnTracker) Connections() *ConnTrackerConnections {
 }
 
 //nolint:unused
-func (t *ConnTracker) startConnStats() {
+func (t *ConnTracker) startConnStats(tick time.Duration) {
 	go func() {
-		ticker := time.NewTicker(2000 * time.Millisecond)
+		ticker := time.NewTicker(tick)
 		defer ticker.Stop()
 
 		for {
@@ -192,6 +193,9 @@ func (t *ConnTracker) TcpInfo() (*unix.TCPInfo, error) {
 	var errs []error
 
 	t.Monkey(func(active map[*TrackedConn]struct{}) {
+		// gauge metrics that must be averaged
+		rtts := make([]float64, 0, len(active))
+
 		for conn := range active {
 			tcpInfo, err := conn.tcpInfo()
 			if err != nil {
@@ -200,11 +204,15 @@ func (t *ConnTracker) TcpInfo() (*unix.TCPInfo, error) {
 			}
 
 			// Aggregate TCPInfo from all live connections
+			// counter metrics
 			tcpInfoSum = addTcpInfo(tcpInfoSum, tcpInfo)
+			// gauge metrics that must be averaged
+			rtts = append(rtts, float64(tcpInfo.Rtt))
 		}
 
 		// access t.tcpInfoSumClosed while Monkey() is holding the lock
 		tcpInfoSum = addTcpInfo(t.tcpInfoSumClosed, tcpInfoSum)
+		tcpInfoSum.Rtt = uint32(stat.Mean(rtts, nil))
 	})
 
 	if len(errs) > 0 {
@@ -217,6 +225,7 @@ func (t *ConnTracker) TcpInfo() (*unix.TCPInfo, error) {
 func addTcpInfo(a, b *unix.TCPInfo) *unix.TCPInfo {
 	infoSum := *a
 
+	// counter values
 	infoSum.Bytes_acked += b.Bytes_acked
 	infoSum.Bytes_received += b.Bytes_received
 	infoSum.Bytes_retrans += b.Bytes_retrans
