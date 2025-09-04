@@ -38,7 +38,7 @@ func NewConnTracker(d *net.Dialer) *ConnTracker {
 	}
 
 	// enable periodic stats logging -- useful for debugging
-	// t.startConnStats()
+	// t.startConnStats(2000 * time.Millisecond)
 
 	return t
 }
@@ -172,9 +172,9 @@ func (t *ConnTracker) Connections() *ConnTrackerConnections {
 }
 
 //nolint:unused
-func (t *ConnTracker) startConnStats() {
+func (t *ConnTracker) startConnStats(tick time.Duration) {
 	go func() {
-		ticker := time.NewTicker(2000 * time.Millisecond)
+		ticker := time.NewTicker(tick)
 		defer ticker.Stop()
 
 		for {
