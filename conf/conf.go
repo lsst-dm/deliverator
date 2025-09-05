@@ -19,6 +19,7 @@ type S3ndConf struct {
 	EndpointUrl           *string
 	UploadMaxParallel     *int64
 	UploadTimeout         *time.Duration
+	uploadTimeoutFactor   *int
 	QueueTimeout          *time.Duration
 	UploadTries           *int
 	UploadPartsize        *k8sresource.Quantity
@@ -30,15 +31,16 @@ type S3ndConf struct {
 func (conf *S3ndConf) ToMap() map[string]string {
 	// report the configuration using the name of env vars instead of the internal field names.
 	return map[string]string{
+		"S3ND_ENDPOINT_URL":             *conf.EndpointUrl,
 		"S3ND_HOST":                     *conf.Host,
 		"S3ND_PORT":                     strconv.Itoa(*conf.Port),
-		"S3ND_ENDPOINT_URL":             *conf.EndpointUrl,
-		"S3ND_UPLOAD_MAX_PARALLEL":      strconv.FormatInt(*conf.UploadMaxParallel, 10),
-		"S3ND_UPLOAD_TIMEOUT":           (*conf.UploadTimeout).String(),
 		"S3ND_QUEUE_TIMEOUT":            (*conf.QueueTimeout).String(),
-		"S3ND_UPLOAD_TRIES":             strconv.Itoa(*conf.UploadTries),
-		"S3ND_UPLOAD_PARTSIZE":          conf.UploadPartsize.String(),
 		"S3ND_UPLOAD_BWLIMIT":           conf.UploadBwlimit.String(),
+		"S3ND_UPLOAD_MAX_PARALLEL":      strconv.FormatInt(*conf.UploadMaxParallel, 10),
+		"S3ND_UPLOAD_PARTSIZE":          conf.UploadPartsize.String(),
+		"S3ND_UPLOAD_TIMEOUT":           (*conf.UploadTimeout).String(),
+		"S3ND_UPLOAD_TIMEOUT_FACTOR":    strconv.Itoa(*conf.uploadTimeoutFactor),
+		"S3ND_UPLOAD_TRIES":             strconv.Itoa(*conf.UploadTries),
 		"S3ND_UPLOAD_WRITE_BUFFER_SIZE": conf.UploadWriteBufferSize.String(),
 	}
 }
@@ -48,6 +50,11 @@ func (conf *S3ndConf) UploadBwlimitBytes() int64 {
 	return util.DivCeil(conf.UploadBwlimit.Value(), 8)
 }
 
+// return the upload timeout factor
+func (conf *S3ndConf) UploadTimeoutFactor() int {
+	return *conf.uploadTimeoutFactor
+}
+
 // Version returns the s3nd|api version.
 func (conf *S3ndConf) Version() string {
 	return conf.version
@@ -55,7 +62,7 @@ func (conf *S3ndConf) Version() string {
 
 // Parse the environment variables and flags. If a flag is not set, the
 // environment variable is used. Errors are fatal.
-func NewConf(version string) S3ndConf {
+func NewS3ndConf(version string) *S3ndConf {
 	conf := S3ndConf{}
 	conf.version = version
 
@@ -86,6 +93,12 @@ func NewConf(version string) S3ndConf {
 		defaultUploadTimeout = "10s"
 	}
 	uploadTimeout := flag.String("upload-timeout", defaultUploadTimeout, "Upload Timeout (S3ND_UPLOAD_TIMEOUT)")
+
+	defaultUploadTimeoutFactor, _ := strconv.Atoi(os.Getenv("S3ND_UPLOAD_TIMEOUT_FACTOR"))
+	if defaultUploadTimeoutFactor == 0 {
+		defaultUploadTimeoutFactor = 1
+	}
+	conf.uploadTimeoutFactor = flag.Int("upload-timeout-factor", defaultUploadTimeoutFactor, "Upload Timeout exponential backoff base (S3ND_UPLOAD_TIMEOUT_FACTOR)")
 
 	defaultQueueTimeout := os.Getenv("S3ND_QUEUE_TIMEOUT")
 	if defaultQueueTimeout == "" {
@@ -167,7 +180,5 @@ func NewConf(version string) S3ndConf {
 	}
 	conf.UploadWriteBufferSize = &uploadWriteBufferSize
 
-	slog.Info("service configuration", "conf", conf.ToMap())
-
-	return conf
+	return &conf
 }
