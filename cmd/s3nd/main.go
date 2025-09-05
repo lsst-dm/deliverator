@@ -38,18 +38,19 @@ func main() {
 	// set the version displayed in the swagger UI.
 	docs.SwaggerInfo.Version = version.Version
 
-	conf := conf.NewConf(version.Version)
+	conf := conf.NewS3ndConf(version.Version)
 
+	slog.Info("service configuration", "conf", conf.ToMap())
 	slog.Info("starting s3nd", "version", version.Version)
 
-	uHandler := upload.NewS3ndHandler(&conf)
+	uHandler := upload.NewS3ndHandler(conf)
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collector.NewS3ndCollector(uHandler))
 
 	r := chi.NewRouter()
 	r.Get("/swagger/*", httpSwagger.Handler())
-	r.Handle("/version", version.NewHandler(&conf))
+	r.Handle("/version", version.NewHandler(conf))
 	r.Handle("/upload", uHandler)
 	r.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 

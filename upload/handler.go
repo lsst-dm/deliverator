@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -618,6 +619,18 @@ func (h *S3ndHandler) parseRequest(task *UploadTask, r *http.Request) error {
 	return nil
 }
 
+// compute the timeout for a given upload attempt
+func (h *S3ndHandler) UploadTimeout(attempt int) time.Duration {
+	if attempt <= 1 || h.conf.UploadTimeoutFactor() <= 1 {
+		return *h.conf.UploadTimeout
+	}
+
+	// t = base*(factor^(attempt-1))
+	f := math.Pow(float64(h.conf.UploadTimeoutFactor()), float64(attempt-1))
+	t := f * float64(*h.conf.UploadTimeout)
+	return time.Duration(math.Round(t))
+}
+
 func (h *S3ndHandler) uploadFileMultipart(ctx context.Context, task *UploadTask) error {
 	file, err := os.Open(*task.File)
 	if err != nil {
@@ -632,7 +645,7 @@ attempts:
 		if task.UploadAttempts > 1 {
 			uploadRetriesTotal.Inc()
 		}
-		uploadCtx, cancel := context.WithTimeoutCause(ctx, *h.conf.UploadTimeout, errUploadAttemptTimeout)
+		uploadCtx, cancel := context.WithTimeoutCause(ctx, h.UploadTimeout(task.UploadAttempts), errUploadAttemptTimeout)
 		_, err = h.uploader.Upload(uploadCtx, &s3.PutObjectInput{
 			Bucket: aws.String(*task.bucket),
 			Key:    aws.String(*task.key),

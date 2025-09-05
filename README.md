@@ -119,17 +119,21 @@ Usage of ./s3nd:
   -queue-timeout string
     	Queue Timeout waiting for transfer to start (S3ND_QUEUE_TIMEOUT) (default "10s")
   -upload-bwlimit string
-    	Upload bandwidth limit in bits per second (S3ND_UPLOAD_BWLIMIT) (default "0")
+    	Upload aggregate bandwidth limit in bits per second (S3ND_UPLOAD_BWLIMIT) (default "0")
   -upload-max-parallel int
     	Maximum number of parallel object uploads (S3ND_UPLOAD_MAX_PARALLEL) (default 100)
   -upload-partsize string
     	Upload Part Size (S3ND_UPLOAD_PARTSIZE) (default "5Mi")
   -upload-timeout string
     	Upload Timeout (S3ND_UPLOAD_TIMEOUT) (default "10s")
+  -upload-timeout-factor int
+    	Upload Timeout exponential backoff base (S3ND_UPLOAD_TIMEOUT_FACTOR) (default 1)
   -upload-tries int
     	Max number of upload tries (S3ND_UPLOAD_TRIES) (default 1)
   -upload-write-buffer-size string
     	Upload Write Buffer Size (S3ND_UPLOAD_WRITE_BUFFER_SIZE) (default "64Ki")
+  -version
+    	print version and exit
 ```
 
 ### `AWS_ACCESS_KEY_ID`
@@ -211,6 +215,19 @@ S3ND_UPLOAD_TRIES="10"
 ```
 
 Could result up in to 30s elapsing before a transfer is reported as failed.
+
+### `S3ND_UPLOAD_TIMEOUT_FACTOR`
+
+When set to a value other than one, enables exponential upload retry timeout duration backoff.
+
+E.g.
+```
+S3ND_UPLOAD_TIMEOUT="5s"
+S3ND_UPLOAD_TIMEOUT_FACTOR="2"
+S3ND_UPLOAD_TRIES="3"
+```
+
+Would result in attempt timeouts of 5s, 10s, and 20s.
 
 ### `S3ND_UPLOAD_TRIES`
 
