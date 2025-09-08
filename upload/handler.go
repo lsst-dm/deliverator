@@ -152,6 +152,17 @@ var (
 		},
 		[]string{"code", "reason"},
 	)
+	uploadParts = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_parts",
+			Help:                            "histogram of number of parts per file.",
+			NativeHistogramBucketFactor:     1.07,
+			NativeHistogramZeroThreshold:    0.5, // only 0 in zero bucket
+			NativeHistogramMaxBucketNumber:  50,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+		[]string{"code", "reason"},
+	)
 )
 
 type S3ndHandler struct {
@@ -467,6 +478,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		uploadTransferSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTransferSeconds)
 		uploadTransferSizeBytes.WithLabelValues(codeText, statusText).Observe(float64(task.UploadSizeBytes))
 		uploadAttempts.WithLabelValues(codeText, statusText).Observe(float64(task.UploadAttempts))
+		uploadParts.WithLabelValues(codeText, statusText).Observe(float64(task.UploadParts))
 	}
 
 	status := RequestStatus{
