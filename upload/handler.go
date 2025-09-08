@@ -141,6 +141,17 @@ var (
 		},
 		[]string{"code", "reason"},
 	)
+	uploadAttempts = promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "s3nd_upload_attempts",
+			Help:                            "histogram of number of transfer attempts per file. Zero means the upload timed out while queued.",
+			NativeHistogramBucketFactor:     1.07, // expected range of 0-5 attempts
+			NativeHistogramZeroThreshold:    0.5,  // only 0 in zero bucket
+			NativeHistogramMaxBucketNumber:  50,
+			NativeHistogramMinResetDuration: time.Hour,
+		},
+		[]string{"code", "reason"},
+	)
 )
 
 type S3ndHandler struct {
@@ -455,6 +466,7 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		uploadQueuedSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadQueuedSeconds)
 		uploadTransferSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTransferSeconds)
 		uploadTransferSizeBytes.WithLabelValues(codeText, statusText).Observe(float64(task.UploadSizeBytes))
+		uploadAttempts.WithLabelValues(codeText, statusText).Observe(float64(task.UploadAttempts))
 	}
 
 	status := RequestStatus{
