@@ -68,6 +68,7 @@ var _ = Describe("GET /metrics", func() {
 			"s3nd_upload_transfer_seconds",
 			"s3nd_upload_transfer_rate_bytes",
 			"s3nd_upload_transfer_size_bytes",
+			"s3nd_upload_attempts",
 		}
 
 		for _, m := range histogramMetrics {
