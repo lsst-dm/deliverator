@@ -67,11 +67,12 @@ var (
 		},
 		[]string{"code", "reason"},
 	)
-	uploadBytesTotal = promauto.With(registry).NewCounter(
+	uploadBytesTotal = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "s3nd_upload_bytes_total",
-			Help: "number of bytes transferred for files which completed successfully",
+			Help: "the size of the upload request in bytes",
 		},
+		[]string{"code", "reason"},
 	)
 	s3HTTPResponsesTotal = promauto.With(registry).NewCounterVec(
 		prometheus.CounterOpts{
@@ -437,7 +438,6 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case err == nil: // upload succeeded
 		code = http.StatusOK
 		msg = "upload succeeded"
-		uploadBytesTotal.Add(float64(task.UploadSizeBytes))
 		uploadTransferRateBytes.Observe(task.UploadTransferRateBytes)
 	case gherrors.As(err, &badRequestErr):
 		// bad request, e.g. missing required fields
@@ -472,7 +472,11 @@ func (h *S3ndHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		codeText := strconv.Itoa(code)
 		statusText := http.StatusText(code)
 
+		// counters
 		uploadRequestsTotal.WithLabelValues(codeText, statusText).Inc()
+		uploadBytesTotal.WithLabelValues(codeText, statusText).Add(float64(task.UploadSizeBytes))
+
+		// histogram
 		uploadTotalSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTotalSeconds)
 		uploadQueuedSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadQueuedSeconds)
 		uploadTransferSeconds.WithLabelValues(codeText, statusText).Observe(task.UploadTransferSeconds)
