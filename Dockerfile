@@ -1,10 +1,10 @@
 FROM golang:1.25.0-alpine AS builder
 
 RUN apk --update --no-cache add \
-    binutils \
-    make \
-    git \
-    && rm -rf /root/.cache
+  binutils \
+  make \
+  git \
+  && rm -rf /root/.cache
 WORKDIR /go/src/github.com/lsst-dm/deliverator
 COPY . .
 RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4 && make build
