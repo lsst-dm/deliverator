@@ -47,7 +47,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	// start a minio instance
 	minioC, err := tcminio.Run(
 		ctx,
-		"cgr.dev/chainguard/minio:latest", // using chainguard since minio is no longer free to use
+		"cgr.dev/chainguard/minio:v0.20261023", // using chainguard since minio is no longer free to use
 		tcminio.WithUsername("miniouser"),
 		tcminio.WithPassword("miniopass"),
 	)
