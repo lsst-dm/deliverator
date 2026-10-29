@@ -145,12 +145,12 @@ jobs:
           detached: true
 
       - name: start minio
-        uses: infleet/minio-action@v0.0.1
+        uses: intikhab49/minio-from-source@v1
         with:
           port: "9000"
-          version: latest
-          username: ${{ env.AWS_ACCESS_KEY_ID }}
-          password: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          version: RELEASE.2025-10-15T17-29-55Z
+          root-user: ${{ env.AWS_ACCESS_KEY_ID }}
+          root-password: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
       - name: install s5cmd
         uses: derekn/s5cmd-action@v2

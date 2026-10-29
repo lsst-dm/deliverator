@@ -47,7 +47,7 @@ var _ = SynchronizedBeforeSuite(func() {
 	// start a minio instance
 	minioC, err := tcminio.Run(
 		ctx,
-		"minio/minio:RELEASE.2025-05-24T17-08-30Z", // pin image for reproducibility
+		"cgr.dev/chainguard/minio:v0.20261023", // using chainguard since minio is no longer free to use
 		tcminio.WithUsername("miniouser"),
 		tcminio.WithPassword("miniopass"),
 	)
